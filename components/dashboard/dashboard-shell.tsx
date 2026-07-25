@@ -1,0 +1,157 @@
+"use client"
+
+import { useState } from "react"
+import { MenuIcon, PanelRightIcon } from "lucide-react"
+
+import { ChatPanel } from "@/components/dashboard/chat-panel"
+import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
+import {
+  SourcePanel,
+  SourcePanelContent,
+} from "@/components/dashboard/source-panel"
+import { UploadDialog } from "@/components/dashboard/upload-dialog"
+import {
+  INITIAL_SOURCE,
+  type KnowledgeSource,
+  type SourceCitation,
+  type UploadType,
+} from "@/components/dashboard/dummy-data"
+import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { useMediaQuery } from "@/hooks/use-media-query"
+import { cn } from "@/lib/utils"
+
+export function DashboardShell() {
+  const isMobile = useMediaQuery("(max-width: 1023px)")
+  const [activeSource, setActiveSource] = useState<KnowledgeSource | null>(
+    INITIAL_SOURCE
+  )
+  const [uploadType, setUploadType] = useState<UploadType | null>(null)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [selectedCitation, setSelectedCitation] = useState<SourceCitation | null>(
+    null
+  )
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sourceOpen, setSourceOpen] = useState(false)
+
+  function handleUploadClick(type: UploadType) {
+    setUploadType(type)
+    setUploadOpen(true)
+    setSidebarOpen(false)
+  }
+
+  function handleSourceAdded(source: KnowledgeSource) {
+    setActiveSource(source)
+    setSelectedCitation(null)
+    setSourceOpen(false)
+  }
+
+  function handleCitationClick(citation: SourceCitation) {
+    setSelectedCitation(citation)
+    if (isMobile) {
+      setSourceOpen(true)
+    }
+  }
+
+  function handleCloseSource() {
+    setSelectedCitation(null)
+    setSourceOpen(false)
+  }
+
+  function handleSourceOpenChange(open: boolean) {
+    setSourceOpen(open)
+    if (!open) {
+      setSelectedCitation(null)
+    }
+  }
+
+  return (
+    <div className="flex h-svh flex-col overflow-hidden bg-background">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open sidebar"
+        >
+          <MenuIcon />
+          Sources
+        </Button>
+        <div className="text-sm font-semibold">Polyglot</div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setSourceOpen(true)}
+          aria-label="Open source panel"
+          disabled={!selectedCitation}
+        >
+          <PanelRightIcon />
+          Source
+        </Button>
+      </div>
+
+      <div
+        className={cn(
+          "grid min-h-0 flex-1",
+          selectedCitation
+            ? "lg:grid-cols-[17rem_minmax(0,1fr)_22rem] xl:grid-cols-[18rem_minmax(0,1fr)_24rem]"
+            : "lg:grid-cols-[17rem_minmax(0,1fr)]"
+        )}
+      >
+        <div className="hidden min-h-0 lg:block">
+          <DashboardSidebar
+            activeSource={activeSource}
+            onUploadClick={handleUploadClick}
+          />
+        </div>
+
+        <div className="min-h-0 min-w-0">
+          <ChatPanel
+            onCitationClick={handleCitationClick}
+            activeCitationId={selectedCitation?.id}
+          />
+        </div>
+
+        {selectedCitation ? (
+          <div className="hidden min-h-0 lg:block">
+            <SourcePanel
+              citation={selectedCitation}
+              onClose={handleCloseSource}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent side="left" showCloseButton={false} className="max-w-[18rem] p-0">
+          <DashboardSidebar
+            activeSource={activeSource}
+            onUploadClick={handleUploadClick}
+          />
+        </SheetContent>
+      </Sheet>
+
+      {isMobile && selectedCitation ? (
+        <Sheet
+          open={sourceOpen}
+          onOpenChange={handleSourceOpenChange}
+        >
+          <SheetContent side="right" showCloseButton={false} className="max-w-md p-0">
+            <SourcePanelContent
+              citation={selectedCitation}
+              onClose={handleCloseSource}
+            />
+          </SheetContent>
+        </Sheet>
+      ) : null}
+
+      <UploadDialog
+        type={uploadType}
+        open={uploadOpen}
+        activeSource={activeSource}
+        onOpenChange={setUploadOpen}
+        onSourceAdded={handleSourceAdded}
+      />
+    </div>
+  )
+}

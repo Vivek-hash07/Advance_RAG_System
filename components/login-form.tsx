@@ -38,7 +38,7 @@ export function LoginForm({
     const { error: signInError } = await authClient.signIn.email({
       email,
       password,
-      callbackURL: "/",
+      callbackURL: "/dashboard",
     });
 
     setIsSubmitting(false);
@@ -48,7 +48,7 @@ export function LoginForm({
       return;
     }
 
-    router.push("/");
+    router.push("/dashboard");
     router.refresh();
   }
 
@@ -115,7 +115,7 @@ export function LoginForm({
               </FieldSeparator>
 
               <Field>
-                <GoogleOAuthButton className="w-full" callbackURL="/" />
+                <GoogleOAuthButton className="w-full" callbackURL="/dashboard" />
               </Field>
 
               <FieldDescription className="text-center">
