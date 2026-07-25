@@ -52,7 +52,7 @@ export function SignupForm({
       name,
       email,
       password,
-      callbackURL: "/",
+      callbackURL: "/dashboard",
     });
 
     setIsSubmitting(false);
@@ -62,7 +62,7 @@ export function SignupForm({
       return;
     }
 
-    router.push("/");
+    router.push("/dashboard");
     router.refresh();
   }
 
@@ -163,7 +163,7 @@ export function SignupForm({
               </FieldSeparator>
 
               <Field>
-                <GoogleOAuthButton className="w-full" callbackURL="/" />
+                <GoogleOAuthButton className="w-full" callbackURL="/dashboard" />
               </Field>
 
               <FieldDescription className="text-center">
