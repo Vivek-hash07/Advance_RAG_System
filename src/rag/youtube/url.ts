@@ -113,14 +113,18 @@ export function resolveYoutubeUrl(
   const url = normalizeInput(input);
 
   if (!YOUTUBE_HOSTS.has(url.hostname) && !SHORT_HOSTS.has(url.hostname)) {
-    throw new YoutubeUrlError("Only youtube.com and youtu.be links are supported.");
+    throw new YoutubeUrlError(
+      "Only youtube.com and youtu.be links are supported.",
+    );
   }
 
   const videoId = extractVideoId(url);
 
   const rawPlaylistId = url.searchParams.get("list");
   const playlistId =
-    rawPlaylistId && isIngestablePlaylistId(rawPlaylistId) ? rawPlaylistId : null;
+    rawPlaylistId && isIngestablePlaylistId(rawPlaylistId)
+      ? rawPlaylistId
+      : null;
 
   if (videoId && playlistId) {
     if (preference === "video") return { kind: "video", videoId };
@@ -147,7 +151,10 @@ export function resolveYoutubeUrl(
   );
 }
 
-export function videoUrl(videoId: string, startSeconds?: number | null): string {
+export function videoUrl(
+  videoId: string,
+  startSeconds?: number | null,
+): string {
   const base = `https://www.youtube.com/watch?v=${videoId}`;
   return startSeconds && startSeconds > 0 ? `${base}&t=${startSeconds}s` : base;
 }
