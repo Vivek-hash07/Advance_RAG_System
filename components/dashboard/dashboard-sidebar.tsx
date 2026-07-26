@@ -1,82 +1,86 @@
 "use client"
 
-import {
-  FileTextIcon,
-  GlobeIcon,
-  ImageIcon,
-  LogOutIcon,
-  PlusIcon,
-  VideoIcon,
-} from "lucide-react"
+import { useRouter } from "next/navigation"
+import { LogOutIcon, PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { SourceIcon } from "@/components/dashboard/source-icon"
+import { SourceList } from "@/components/dashboard/source-list"
 import {
   UPLOAD_OPTIONS,
-  getSourceTypeLabel,
   type KnowledgeSource,
   type UploadType,
-} from "@/components/dashboard/dummy-data"
+} from "@/components/dashboard/types"
+import { authClient } from "@/src/lib/auth-client"
 import { cn } from "@/lib/utils"
 
 interface DashboardSidebarProps {
-  activeSource: KnowledgeSource | null
+  sources: KnowledgeSource[]
   onUploadClick: (type: UploadType) => void
+  onRemoveSource: (id: string) => Promise<void>
   className?: string
 }
 
-function SourceTypeIcon({
-  type,
-  className,
-}: {
-  type: KnowledgeSource["type"]
-  className?: string
-}) {
-  switch (type) {
-    case "pdf":
-    case "doc":
-    case "vtt":
-      return <FileTextIcon className={className} />
-    case "image":
-      return <ImageIcon className={className} />
-    case "webpage":
-      return <GlobeIcon className={className} />
-    case "youtube":
-      return <VideoIcon className={className} />
-  }
+function initialsOf(name?: string | null, email?: string | null): string {
+  const source = name?.trim() || email?.trim() || "?"
+  return source
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
 }
 
-function UploadOptionIcon({
-  type,
-  className,
-}: {
-  type: UploadType
-  className?: string
-}) {
-  switch (type) {
-    case "pdf":
-    case "doc":
-    case "vtt":
-      return <FileTextIcon className={className} />
-    case "image":
-      return <ImageIcon className={className} />
-    case "webpage":
-      return <GlobeIcon className={className} />
-    case "youtube":
-      return <VideoIcon className={className} />
+function UserFooter() {
+  const router = useRouter()
+  const { data: session, isPending } = authClient.useSession()
+
+  async function handleSignOut() {
+    await authClient.signOut()
+    router.push("/signin")
   }
+
+  return (
+    <div className="border-t border-sidebar-border p-3">
+      <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
+        <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+          {isPending
+            ? ""
+            : initialsOf(session?.user?.name, session?.user?.email)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">
+            {session?.user?.name ?? "Signed in"}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {session?.user?.email ?? ""}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Sign out"
+          onClick={handleSignOut}
+        >
+          <LogOutIcon />
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 export function DashboardSidebar({
-  activeSource,
+  sources,
   onUploadClick,
+  onRemoveSource,
   className,
 }: DashboardSidebarProps) {
   return (
     <aside
       className={cn(
         "flex h-full w-full flex-col border-r border-border bg-sidebar text-sidebar-foreground",
-        className
+        className,
       )}
     >
       <div className="flex items-center gap-2.5 border-b border-sidebar-border px-4 py-4">
@@ -95,104 +99,60 @@ export function DashboardSidebar({
             Add source
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            One source at a time — PDF, document, image, webpage, VTT, or
-            YouTube.
+            PDF, Word, text, Markdown and VTT transcripts.
           </p>
         </div>
 
         <div className="grid gap-1.5">
-          {UPLOAD_OPTIONS.map((option) => {
-            const isActive = activeSource?.type === option.type
-
-            return (
-              <button
-                key={option.type}
-                type="button"
-                onClick={() => onUploadClick(option.type)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  isActive && "bg-sidebar-accent/80"
-                )}
-              >
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
-                  <UploadOptionIcon
-                    type={option.type}
-                    className="size-3.5 text-muted-foreground"
-                  />
+          {UPLOAD_OPTIONS.map((option) => (
+            <button
+              key={option.type}
+              type="button"
+              disabled={!option.enabled}
+              onClick={() => onUploadClick(option.type)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
+                option.enabled
+                  ? "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  : "cursor-not-allowed opacity-50",
+              )}
+            >
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
+                <SourceIcon
+                  type={option.type}
+                  className="size-3.5 text-muted-foreground"
+                />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{option.label}</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {option.enabled ? "Upload file" : "Coming soon"}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium">{option.label}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {option.mode === "file" ? "Upload file" : "Paste link"}
-                  </span>
-                </span>
+              </span>
+              {option.enabled ? (
                 <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              </button>
-            )
-          })}
+              ) : null}
+            </button>
+          ))}
         </div>
 
         <Separator className="my-4" />
 
-        <div className="mb-2 px-1">
+        <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Active source
+            Your sources
           </p>
+          {sources.length > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              {sources.length}
+            </span>
+          ) : null}
         </div>
 
-        {activeSource ? (
-          <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2.5">
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
-              <SourceTypeIcon
-                type={activeSource.type}
-                className="size-3.5 text-muted-foreground"
-              />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium">
-                {activeSource.name}
-              </span>
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span>{getSourceTypeLabel(activeSource.type)}</span>
-                <span>·</span>
-                <span>{activeSource.addedAt}</span>
-              </span>
-            </span>
-            <span
-              className={cn(
-                "mt-1 size-1.5 shrink-0 rounded-full",
-                activeSource.status === "ready" && "bg-emerald-500",
-                activeSource.status === "processing" && "bg-amber-500",
-                activeSource.status === "failed" && "bg-destructive"
-              )}
-            />
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
-            <p className="text-sm text-muted-foreground">No source added yet</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Choose a source type above to get started.
-            </p>
-          </div>
-        )}
+        <SourceList sources={sources} onRemove={onRemoveSource} />
       </div>
 
-      <div className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-          <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-semibold">
-            VS
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">Vivek Sarvaiya</p>
-            <p className="truncate text-xs text-muted-foreground">
-              vivek@example.com
-            </p>
-          </div>
-          <Button variant="ghost" size="icon-sm" aria-label="Sign out">
-            <LogOutIcon />
-          </Button>
-        </div>
-      </div>
+      <UserFooter />
     </aside>
   )
 }

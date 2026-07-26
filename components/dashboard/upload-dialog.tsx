@@ -1,14 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import {
-  FileTextIcon,
-  GlobeIcon,
-  ImageIcon,
-  LinkIcon,
-  UploadCloudIcon,
-  VideoIcon,
-} from "lucide-react"
+import { AlertCircleIcon, Loader2Icon, UploadCloudIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,99 +12,90 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { SourceIcon } from "@/components/dashboard/source-icon"
 import {
   UPLOAD_OPTIONS,
-  createSourceFromUpload,
   type KnowledgeSource,
   type UploadType,
-} from "@/components/dashboard/dummy-data"
+} from "@/components/dashboard/types"
 import { cn } from "@/lib/utils"
 
 interface UploadDialogProps {
   type: UploadType | null
   open: boolean
-  activeSource: KnowledgeSource | null
   onOpenChange: (open: boolean) => void
-  onSourceAdded: (source: KnowledgeSource) => void
+  onUpload: (file: File) => Promise<KnowledgeSource>
 }
 
-function getUploadIcon(type: UploadType) {
-  switch (type) {
-    case "pdf":
-    case "doc":
-    case "vtt":
-      return FileTextIcon
-    case "image":
-      return ImageIcon
-    case "webpage":
-      return GlobeIcon
-    case "youtube":
-      return VideoIcon
-  }
+function formatAcceptList(accept: string): string {
+  return accept
+    .split(",")
+    .map((extension) => extension.replace(".", "").toUpperCase())
+    .join(", ")
 }
 
 export function UploadDialog({
   type,
   open,
-  activeSource,
   onOpenChange,
-  onSourceAdded,
+  onUpload,
 }: UploadDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [linkValue, setLinkValue] = useState("")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const option = UPLOAD_OPTIONS.find((item) => item.type === type)
-  const Icon = type ? getUploadIcon(type) : FileTextIcon
 
-  function resetForm() {
-    setLinkValue("")
+  /**
+   * Clear the native input alongside React state, otherwise re-picking the same
+   * file fires no `change` event and the upload cannot be retried.
+   */
+  function clearSelection() {
     setSelectedFile(null)
-    setPreviewUrl(null)
-    setIsDragging(false)
+    if (inputRef.current) {
+      inputRef.current.value = ""
+    }
   }
 
   function handleOpenChange(nextOpen: boolean) {
+    if (isUploading) return
+
     if (!nextOpen) {
-      resetForm()
+      clearSelection()
+      setIsDragging(false)
+      setError(null)
     }
+
     onOpenChange(nextOpen)
   }
 
-  function handleFileSelect(file: File | null) {
-    setSelectedFile(file)
-
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl)
-      setPreviewUrl(null)
-    }
-
-    if (file && type === "image") {
-      setPreviewUrl(URL.createObjectURL(file))
-    }
-  }
-
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
 
-    if (!type || !option) {
-      return
+    if (!selectedFile || isUploading) return
+
+    setIsUploading(true)
+    setError(null)
+
+    try {
+      await onUpload(selectedFile)
+      clearSelection()
+      onOpenChange(false)
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Upload failed. Please try again.",
+      )
+      clearSelection()
+    } finally {
+      setIsUploading(false)
     }
-
-    const sourceName =
-      option.mode === "file"
-        ? (selectedFile?.name ?? "Uploaded file")
-        : linkValue.trim()
-
-    onSourceAdded(createSourceFromUpload(type, sourceName))
-    handleOpenChange(false)
   }
 
-  if (!option) {
+  if (!option || !type) {
     return null
   }
 
@@ -121,107 +105,82 @@ export function UploadDialog({
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <div className="mb-1 flex size-10 items-center justify-center rounded-lg bg-muted">
-              <Icon className="size-5 text-foreground" />
+              <SourceIcon type={type} className="size-5 text-foreground" />
             </div>
             <DialogTitle>Add {option.label}</DialogTitle>
             <DialogDescription>{option.description}</DialogDescription>
           </DialogHeader>
 
-          {activeSource ? (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
-              Adding this source will replace{" "}
-              <span className="font-medium">{activeSource.name}</span>. Only one
-              source can be active at a time.
-            </div>
-          ) : null}
-
           <div className="py-4">
-            {option.mode === "file" ? (
-              <div className="space-y-3">
-                <input
-                  ref={inputRef}
-                  type="file"
-                  accept={option.accept}
-                  className="sr-only"
-                  onChange={(event) => {
-                    handleFileSelect(event.target.files?.[0] ?? null)
-                  }}
-                />
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => inputRef.current?.click()}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault()
-                      inputRef.current?.click()
-                    }
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault()
-                    setIsDragging(true)
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    setIsDragging(false)
-                    handleFileSelect(event.dataTransfer.files?.[0] ?? null)
-                  }}
-                  className={cn(
-                    "flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors",
-                    isDragging
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-foreground/30 hover:bg-muted/40"
-                  )}
-                >
-                  {previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={previewUrl}
-                      alt="Selected image preview"
-                      className="max-h-28 rounded-lg object-contain"
-                    />
-                  ) : (
-                    <UploadCloudIcon className="size-8 text-muted-foreground" />
-                  )}
-                  <div>
-                    <p className="text-sm font-medium">
-                      {selectedFile
-                        ? selectedFile.name
-                        : "Drag & drop or click to browse"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {type === "image"
-                        ? "PNG, JPG, WEBP, GIF supported"
-                        : `${option.accept?.replace(/\./g, "").toUpperCase()} files supported`}
-                    </p>
-                    {type === "image" ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Text will be extracted via OCR after upload.
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept={option.accept}
+              className="sr-only"
+              onChange={(event) => {
+                setSelectedFile(event.target.files?.[0] ?? null)
+                setError(null)
+              }}
+            />
+            <div
+              role="button"
+              tabIndex={0}
+              aria-disabled={isUploading}
+              onClick={() => !isUploading && inputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault()
+                  if (!isUploading) inputRef.current?.click()
+                }
+              }}
+              onDragOver={(event) => {
+                event.preventDefault()
+                if (!isUploading) setIsDragging(true)
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault()
+                setIsDragging(false)
+                if (isUploading) return
+                setSelectedFile(event.dataTransfer.files?.[0] ?? null)
+                setError(null)
+              }}
+              className={cn(
+                "flex min-h-40 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors",
+                isUploading
+                  ? "cursor-not-allowed opacity-60"
+                  : "cursor-pointer hover:border-foreground/30 hover:bg-muted/40",
+                isDragging ? "border-primary bg-primary/5" : "border-border",
+              )}
+            >
+              <UploadCloudIcon className="size-8 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">
+                  {selectedFile
+                    ? selectedFile.name
+                    : "Drag & drop or click to browse"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {option.accept
+                    ? `${formatAcceptList(option.accept)} supported`
+                    : ""}
+                </p>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="source-link">
-                  {option.type === "youtube" ? "YouTube URL" : "Webpage URL"}
-                </Label>
-                <div className="relative">
-                  <LinkIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="source-link"
-                    type="url"
-                    placeholder={option.placeholder}
-                    value={linkValue}
-                    onChange={(event) => setLinkValue(event.target.value)}
-                    className="pl-8"
-                    required
-                  />
-                </div>
+            </div>
+
+            {type !== "pdf" ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                This file is converted to PDF before indexing, so answers can
+                cite exact pages.
+              </p>
+            ) : null}
+
+            {error ? (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" />
+                <span>{error}</span>
               </div>
-            )}
+            ) : null}
           </div>
 
           <DialogFooter>
@@ -229,14 +188,19 @@ export function UploadDialog({
               type="button"
               variant="outline"
               onClick={() => handleOpenChange(false)}
+              disabled={isUploading}
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={option.mode === "file" ? !selectedFile : !linkValue.trim()}
-            >
-              {option.mode === "file" ? "Upload" : "Add link"}
+            <Button type="submit" disabled={!selectedFile || isUploading}>
+              {isUploading ? (
+                <>
+                  <Loader2Icon className="animate-spin" />
+                  Uploading
+                </>
+              ) : (
+                "Upload"
+              )}
             </Button>
           </DialogFooter>
         </form>

@@ -1,0 +1,471 @@
+Skip to Content
+PageIndex
+Home
+Developer Dashboard
+Chat Platform
+GitHub
+
+Contact Us
+Search…
+Overview
+Introduction
+Getting Started
+Integrations
+MCP
+Python SDK
+JavaScript SDK
+API Reference
+Resources
+Open Source
+Tech Blog
+Cookbook
+Subscription
+System
+
+Tree Structure
+
+
+⚙️ PageIndex JavaScript SDK
+Install
+Initialize
+Quick Start
+Error Handling
+SDK Full Reference
+💬 Community & Support
+JavaScript SDK
+⚙️ PageIndex JavaScript SDK
+Document Processing
+Upload, process, and manage documents
+
+Chat API (beta)
+Chat with your PageIndex-processed documents
+
+Install
+
+npm install @pageindex/sdk
+Initialize
+To get started, generate your API key  from the PageIndex Developer Dashboard .
+
+
+import { PageIndexClient } from "@pageindex/sdk";
+ 
+const client = new PageIndexClient({ apiKey: "YOUR_API_KEY" });
+Configuration Options
+
+Name	Type	Required	Description	Default
+apiKey	string	yes	PageIndex API key	-
+apiUrl	string	no	Custom API base URL	https://api.pageindex.ai
+folderScope	string	no	Restrict all operations to a specific folder and its subfolders	-
+Quick Start
+Upload a PDF, retrieve its tree structure, and ask a question:
+
+
+import { PageIndexClient } from "@pageindex/sdk";
+import { readFileSync } from "fs";
+ 
+const client = new PageIndexClient({ apiKey: "YOUR_API_KEY" });
+ 
+// 1. Upload a document
+const file = readFileSync("./2023-annual-report.pdf");
+const { doc_id } = await client.api.submitDocument(file, "2023-annual-report.pdf");
+console.log("Document ID:", doc_id);
+ 
+// 2. Get tree structure (includes processing status)
+const tree = await client.api.getTree(doc_id);
+if (tree.status === "completed") {
+  console.log("Tree:", tree.result);
+}
+ 
+// 3. Chat with the document
+const response = await client.api.chatCompletions({
+  messages: [{ role: "user", content: "What are the key findings?" }],
+  doc_id,
+});
+console.log(response.choices[0].message.content);
+ 
+// 4. Stream a response
+const stream = await client.api.chatCompletions({
+  messages: [{ role: "user", content: "Summarize this document" }],
+  doc_id,
+  stream: true,
+});
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
+}
+See Document Processing for upload and management, and Chat API for the full chat reference.
+
+Want results instantly with streaming? The Chat API also supports streaming responses.
+
+Error Handling
+All SDK errors are instances of PageIndexError:
+
+
+import { PageIndexClient, PageIndexError } from "@pageindex/sdk";
+ 
+try {
+  const doc = await client.api.getDocument("invalid-id");
+} catch (error) {
+  if (error instanceof PageIndexError) {
+    console.log(error.code);       // "NOT_FOUND" | "UNAUTHORIZED" | "RATE_LIMITED" | ...
+    console.log(error.message);    // Human-readable description
+    console.log(error.statusCode); // HTTP status code
+    console.log(error.details);    // Additional context
+  }
+}
+Error Codes
+
+Code	HTTP Status	Description
+UNAUTHORIZED	401	Invalid or missing API key
+NOT_FOUND	404	Document or resource not found
+RATE_LIMITED	429	Too many requests
+USAGE_LIMIT_REACHED	403	Account usage limit exceeded
+INVALID_INPUT	400	Invalid parameters
+SERVICE_UNAVAILABLE	503	Service temporarily unavailable
+INTERNAL_ERROR	500	Unexpected server error
+SDK Full Reference
+Document Processing: Upload, process, and manage documents.
+Chat API (beta): Chat with your PageIndex-processed documents.
+💬 Community & Support
+ Star us on GitHub 
+ Join our Discord 
+ Leave us a message 
+Last updated on June 20, 2026
+Retrieval
+Document Processing
+© 2026 Vectify AI
+PageIndex
+Home
+Chat
+Developer
+Enterprise
+Contact
+JavaScript SDK - PageIndex Docs
+
+
+Overview
+Playground
+Documents
+Workspace
+API Keys
+Subscription
+Usage
+Settings
+Integration Guide
+MCP
+
+Python SDK
+
+JavaScript SDK
+Overview
+
+Vivek Sarvaiya
+Welcome
+PageIndex for Developers
+
+Subscription
+Free
+Unlock more API credits, higher quotas, and paid-plan features.
+
+Quickstart
+Set up the SDK, submit a document, and start querying via MCP or the Chat API.
+
+New to PageIndex? Read the docs
+Python
+JavaScript
+1
+Install & initialize
+npm install @pageindex/sdk
+
+import { PageIndexClient } from "@pageindex/sdk";
+
+const client = new PageIndexClient({ apiKey: "YOUR_API_KEY" });
+
+2
+Submit document & check status
+import { readFileSync } from "fs";
+
+const file = readFileSync("./report.pdf");
+const { doc_id } = await client.api.submitDocument(
+  file,
+  "report.pdf",
+);
+
+const tree = await client.api.getTree(doc_id);
+
+if (tree.status === "completed") {
+  console.log("Document processing completed");
+}
+
+3
+Choose your integration
+MCP
+Chat API
+You run your own LLM or agent. Connect PageIndex as a retrieval tool via MCP, and your LLM calls it automatically.
+
+{
+  "mcpServers": {
+    "pageindex": {
+      "type": "http",
+      "url": "https://api.pageindex.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}
+
+Examples to connect your agent framework:
+Browse all →
+Claude Messages API
+Claude Agent SDK
+OpenAI Agents SDK
+OpenAI Responses API
+Gemini API
+Google ADK
+LangChain
+DeepAgents
+OpenRouter
+API Keys
+Manage keys
+Name	Secret Key
+Polyglot
+bae7b3ee****33be8037
+Recent Documents
+All documents
+Upload a document
+Setup
+View docs
+MCP
+Python
+JavaScript
+CURL
+npm install @pageindex/sdk
+
+import { PageIndexClient } from "@pageindex/sdk";
+
+const client = new PageIndexClient({ apiKey: "YOUR_API_KEY" });
+
+Copy
+View Docs
+
+Skip to Content
+PageIndex
+Home
+Developer Dashboard
+Chat Platform
+GitHub
+
+Contact Us
+Search…
+Overview
+Introduction
+Getting Started
+Integrations
+MCP
+Python SDK
+JavaScript SDK
+Document Processing
+Chat API (
+beta
+)
+MCP Tools
+API Reference
+Resources
+Open Source
+Tech Blog
+Cookbook
+Subscription
+System
+
+Tree Structure
+
+
+🌲 PageIndex Document Processing
+Submit Document for Processing
+Get Processing Status & Tree Structure
+Get Document Metadata
+List Documents
+Delete a Document
+💬 Community & Support
+JavaScript SDK
+Document Processing
+🌲 PageIndex Document Processing
+PageIndex generates a hierarchical “table of contents” tree that maintains the original document’s logical flow and organizational structure. This LLM-optimized “table of contents” enables precise navigation and is ready for reasoning-based RAG. See our cookbook for a practical example.
+
+Currently accepts PDF files only (more formats coming soon).
+
+Submit Document for Processing
+Uploads a PDF document to generate a PageIndex hierarchical tree.
+Returns a document identifier (doc_id) for subsequent operations.
+Parameters
+
+Name	Type	Required	Description	Default
+file	Blob | Buffer | ArrayBuffer	yes	File content to upload	-
+fileName	string	yes	Name of the file	-
+options.folderId	string	no	Target folder ID. Falls back to folderScope if not set	-
+Example Request
+
+
+import { readFileSync } from "fs";
+ 
+const file = readFileSync("./2023-annual-report.pdf");
+const result = await client.api.submitDocument(file, "2023-annual-report.pdf");
+const doc_id = result.doc_id;
+Example Response
+
+
+{
+  "doc_id": "pi-abc123def456"
+}
+You can organize documents into Folders for better workspace management (Max plan).
+
+Get Processing Status & Tree Structure
+Check processing status and (when complete) get the PageIndex tree for a submitted document.
+
+Parameters
+
+Name	Type	Required	Description	Default
+docId	string	yes	Document ID	-
+options.nodeSummary	boolean	no	Include node summary for each node in response	false
+Example Request
+
+
+const tree = await client.api.getTree(doc_id);
+if (tree.status === "completed") {
+  console.log("PageIndex Tree Structure:", tree.result);
+}
+Example Response (Processing):
+
+
+{
+  "doc_id": "pi-abc123def456",
+  "status": "processing"
+}
+Example Response (Completed):
+
+
+{
+  "doc_id": "pi-abc123def456",
+  "status": "completed",
+  "result": [
+    {
+      "title": "Financial Stability",
+      "node_id": "0006",
+      "page_index": 21,
+      "text": "The Federal Reserve maintains financial stability through comprehensive monitoring and regulatory oversight...",
+      "nodes": [
+        {
+          "title": "Monitoring Financial Vulnerabilities",
+          "node_id": "0007",
+          "page_index": 22,
+          "text": "The Federal Reserve's monitoring focuses on identifying and assessing potential risks..."
+        },
+        {
+          "title": "Domestic and International Cooperation and Coordination",
+          "node_id": "0008",
+          "page_index": 28,
+          "text": "In 2023, the Federal Reserve collaborated internationally with central banks and regulatory authorities..."
+        }
+      ]
+    }
+  ]
+}
+Get Document Metadata
+Retrieve document information including processing status, page count, and creation time.
+
+Parameters
+
+Name	Type	Required	Description
+docId	string	yes	Document ID
+Example Request
+
+
+const doc = await client.api.getDocument(doc_id);
+console.log(`Document: ${doc.name}`);
+console.log(`Status: ${doc.status}`);
+console.log(`Pages: ${doc.pageNum}`);
+Example Response
+
+
+{
+  "id": "pi-abc123def456",
+  "name": "2023-annual-report.pdf",
+  "description": "Annual Report 2023",
+  "status": "completed",
+  "createdAt": "2024-01-15T10:30:00.000Z",
+  "pageNum": 42,
+  "folderId": "folder-123"
+}
+Field	Type	Description
+id	string	Document ID
+name	string	Document filename
+description	string	Document description
+status	string	"queued" | "processing" | "completed" | "failed"
+createdAt	string	ISO 8601 timestamp
+pageNum	number	Number of pages
+folderId	string	Folder ID (if assigned)
+List Documents
+Retrieve a paginated list of all documents, ordered by creation date (newest first).
+
+Parameters
+
+Name	Type	Required	Description	Default
+options.limit	number	no	Maximum documents to return (1–100)	50
+options.offset	number	no	Number of documents to skip	0
+options.folderId	string	no	Filter by folder ID	-
+Example
+
+
+const result = await client.api.listDocuments({ limit: 10 });
+console.log(`Total: ${result.total}`);
+ 
+for (const doc of result.documents) {
+  console.log(`${doc.name} (${doc.status})`);
+}
+ 
+// Next page
+const page2 = await client.api.listDocuments({ limit: 10, offset: 10 });
+Response
+
+
+{
+  "documents": [
+    {
+      "id": "pi-abc123def456",
+      "name": "2023-annual-report.pdf",
+      "status": "completed",
+      "createdAt": "2024-01-15T10:30:00.000Z",
+      "pageNum": 42
+    }
+  ],
+  "total": 25,
+  "limit": 10,
+  "offset": 0
+}
+Delete a Document
+Permanently delete a PageIndex document and all its associated data.
+
+Parameters
+
+Name	Type	Required	Description
+docId	string	yes	Document ID
+Example Request
+
+
+await client.api.deleteDocument(doc_id);
+💬 Community & Support
+ Star us on GitHub 
+ Join our Discord 
+ Leave us a message 
+Last updated on June 20, 2026
+JavaScript SDK
+Chat API (
+beta
+)
+© 2026 Vectify AI
+PageIndex
+Home
+Chat
+Developer
+Enterprise
+Contact

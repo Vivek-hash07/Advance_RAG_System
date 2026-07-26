@@ -8,15 +8,16 @@ datasource db {
 }
 
 model User {
-  id            String    @id
+  id            String     @id
   name          String
   email         String
-  emailVerified Boolean   @default(false)
+  emailVerified Boolean    @default(false)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
   sessions      Session[]
   accounts      Account[]
+  documents     Document[]
 
   @@unique([email])
   @@map("user")
@@ -56,6 +57,31 @@ model Account {
 
   @@index([userId])
   @@map("account")
+}
+
+/// An ingested knowledge source. Content itself lives in PageIndex; this table
+/// tracks ownership, ingest status, and a cached copy of the PageIndex tree so
+/// retrieval does not refetch the whole structure on every question.
+model Document {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  /// "pdf" | "doc" | "text" | "vtt"
+  sourceKind     String
+  pageIndexDocId String
+  /// "queued" | "processing" | "ready" | "failed"
+  status         String   @default("queued")
+  errorMessage   String?
+  pageCount      Int?
+  /// Flattened PageIndex tree, cached once processing completes.
+  tree           Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([pageIndexDocId])
+  @@index([userId])
+  @@map("document")
 }
 
 model Verification {

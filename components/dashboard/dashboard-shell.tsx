@@ -10,40 +10,42 @@ import {
   SourcePanelContent,
 } from "@/components/dashboard/source-panel"
 import { UploadDialog } from "@/components/dashboard/upload-dialog"
-import {
-  INITIAL_SOURCE,
-  type KnowledgeSource,
-  type SourceCitation,
-  type UploadType,
-} from "@/components/dashboard/dummy-data"
+import type {
+  KnowledgeSource,
+  SourceCitation,
+  UploadType,
+} from "@/components/dashboard/types"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { useChat } from "@/hooks/use-chat"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { useSources } from "@/hooks/use-sources"
 import { cn } from "@/lib/utils"
 
-export function DashboardShell() {
+interface DashboardShellProps {
+  initialSources: KnowledgeSource[]
+}
+
+export function DashboardShell({ initialSources }: DashboardShellProps) {
   const isMobile = useMediaQuery("(max-width: 1023px)")
-  const [activeSource, setActiveSource] = useState<KnowledgeSource | null>(
-    INITIAL_SOURCE
-  )
+  const { sources, readySources, upload, remove } = useSources(initialSources)
+  const { messages, isAsking, send } = useChat()
+
   const [uploadType, setUploadType] = useState<UploadType | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [selectedCitation, setSelectedCitation] = useState<SourceCitation | null>(
-    null
-  )
+  const [selectedCitation, setSelectedCitation] =
+    useState<SourceCitation | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sourceOpen, setSourceOpen] = useState(false)
+
+  const hasProcessingSources = sources.some(
+    (source) => source.status === "queued" || source.status === "processing",
+  )
 
   function handleUploadClick(type: UploadType) {
     setUploadType(type)
     setUploadOpen(true)
     setSidebarOpen(false)
-  }
-
-  function handleSourceAdded(source: KnowledgeSource) {
-    setActiveSource(source)
-    setSelectedCitation(null)
-    setSourceOpen(false)
   }
 
   function handleCitationClick(citation: SourceCitation) {
@@ -64,6 +66,22 @@ export function DashboardShell() {
       setSelectedCitation(null)
     }
   }
+
+  async function handleRemoveSource(id: string) {
+    await remove(id)
+    // A citation pointing at a deleted source has nothing left to show.
+    setSelectedCitation((current) =>
+      current?.documentId === id ? null : current,
+    )
+  }
+
+  const sidebar = (
+    <DashboardSidebar
+      sources={sources}
+      onUploadClick={handleUploadClick}
+      onRemoveSource={handleRemoveSource}
+    />
+  )
 
   return (
     <div className="flex h-svh flex-col overflow-hidden bg-background">
@@ -95,18 +113,18 @@ export function DashboardShell() {
           "grid min-h-0 flex-1",
           selectedCitation
             ? "lg:grid-cols-[17rem_minmax(0,1fr)_22rem] xl:grid-cols-[18rem_minmax(0,1fr)_24rem]"
-            : "lg:grid-cols-[17rem_minmax(0,1fr)]"
+            : "lg:grid-cols-[17rem_minmax(0,1fr)]",
         )}
       >
-        <div className="hidden min-h-0 lg:block">
-          <DashboardSidebar
-            activeSource={activeSource}
-            onUploadClick={handleUploadClick}
-          />
-        </div>
+        <div className="hidden min-h-0 lg:block">{sidebar}</div>
 
         <div className="min-h-0 min-w-0">
           <ChatPanel
+            messages={messages}
+            isAsking={isAsking}
+            readySourceCount={readySources.length}
+            hasProcessingSources={hasProcessingSources}
+            onSend={send}
             onCitationClick={handleCitationClick}
             activeCitationId={selectedCitation?.id}
           />
@@ -123,20 +141,22 @@ export function DashboardShell() {
       </div>
 
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" showCloseButton={false} className="max-w-[18rem] p-0">
-          <DashboardSidebar
-            activeSource={activeSource}
-            onUploadClick={handleUploadClick}
-          />
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="max-w-[18rem] p-0"
+        >
+          {sidebar}
         </SheetContent>
       </Sheet>
 
       {isMobile && selectedCitation ? (
-        <Sheet
-          open={sourceOpen}
-          onOpenChange={handleSourceOpenChange}
-        >
-          <SheetContent side="right" showCloseButton={false} className="max-w-md p-0">
+        <Sheet open={sourceOpen} onOpenChange={handleSourceOpenChange}>
+          <SheetContent
+            side="right"
+            showCloseButton={false}
+            className="max-w-md p-0"
+          >
             <SourcePanelContent
               citation={selectedCitation}
               onClose={handleCloseSource}
@@ -148,9 +168,8 @@ export function DashboardShell() {
       <UploadDialog
         type={uploadType}
         open={uploadOpen}
-        activeSource={activeSource}
         onOpenChange={setUploadOpen}
-        onSourceAdded={handleSourceAdded}
+        onUpload={upload}
       />
     </div>
   )

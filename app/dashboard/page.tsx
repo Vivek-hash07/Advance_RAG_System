@@ -3,6 +3,8 @@ import { redirect } from "next/navigation"
 
 import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { auth } from "@/src/lib/auth"
+import { toPublicSource } from "@/src/rag/documents/serialize"
+import { listUserDocuments } from "@/src/rag/documents/service"
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({
@@ -13,5 +15,7 @@ export default async function DashboardPage() {
     redirect("/signin")
   }
 
-  return <DashboardShell />
+  const documents = await listUserDocuments(session.user.id)
+
+  return <DashboardShell initialSources={documents.map(toPublicSource)} />
 }

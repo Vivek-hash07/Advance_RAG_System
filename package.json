@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@pageindex/sdk": "^0.8.0",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
     "better-auth": "^1.6.25",
@@ -22,7 +23,10 @@
     "dotenv": "^17.4.2",
     "inngest": "^4.13.0",
     "lucide-react": "^1.26.0",
+    "mammoth": "^1.12.0",
     "next": "16.2.11",
+    "openai": "^6.49.0",
+    "pdf-lib": "^1.17.1",
     "pg": "^8.22.0",
     "prisma": "^7.9.0",
     "react": "19.2.4",

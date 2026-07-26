@@ -1,21 +1,15 @@
 "use client"
 
-import {
-  ExternalLinkIcon,
-  FileTextIcon,
-  GlobeIcon,
-  ImageIcon,
-  XIcon,
-  VideoIcon,
-} from "lucide-react"
+import { XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SourceIcon } from "@/components/dashboard/source-icon"
 import {
+  getCitationLocation,
   getSourceTypeLabel,
   type SourceCitation,
-  type SourceType,
-} from "@/components/dashboard/dummy-data"
+} from "@/components/dashboard/types"
 import { cn } from "@/lib/utils"
 
 interface SourcePanelProps {
@@ -24,19 +18,32 @@ interface SourcePanelProps {
   className?: string
 }
 
-function SourceIcon({ type, className }: { type: SourceType; className?: string }) {
-  switch (type) {
-    case "pdf":
-    case "doc":
-    case "vtt":
-      return <FileTextIcon className={className} />
-    case "image":
-      return <ImageIcon className={className} />
-    case "webpage":
-      return <GlobeIcon className={className} />
-    case "youtube":
-      return <VideoIcon className={className} />
+/**
+ * Render the excerpt with the supporting sentence highlighted. The highlight is
+ * only applied when the model quoted the source verbatim, so nothing is ever
+ * marked as sourced text when it was actually paraphrased.
+ */
+function Excerpt({ citation }: { citation: SourceCitation }) {
+  if (!citation.highlightedText) {
+    return <>{citation.excerpt}</>
   }
+
+  const parts = citation.excerpt.split(citation.highlightedText)
+
+  return (
+    <>
+      {parts.map((part, index) => (
+        <span key={`${citation.id}-${index}`}>
+          {part}
+          {index < parts.length - 1 ? (
+            <mark className="rounded-sm bg-amber-200/80 px-0.5 text-black dark:bg-amber-500/30 dark:text-black">
+              {citation.highlightedText}
+            </mark>
+          ) : null}
+        </span>
+      ))}
+    </>
+  )
 }
 
 export function SourcePanelContent({
@@ -48,8 +55,7 @@ export function SourcePanelContent({
   onClose: () => void
   showCloseButton?: boolean
 }) {
-  const locationLabel =
-    citation.page ?? citation.timestamp ?? "Referenced section"
+  const breadcrumb = citation.title
 
   return (
     <>
@@ -57,11 +63,20 @@ export function SourcePanelContent({
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-2">
             <Badge variant="secondary">
-              {getSourceTypeLabel(citation.sourceType)}
+              {getSourceTypeLabel(citation.sourceKind)}
             </Badge>
-            <span className="text-xs text-muted-foreground">{locationLabel}</span>
+            <span className="text-xs text-muted-foreground">
+              {getCitationLocation(citation)}
+            </span>
           </div>
-          <h2 className="truncate text-sm font-semibold">{citation.sourceName}</h2>
+          <h2 className="truncate text-sm font-semibold" title={citation.documentName}>
+            {citation.documentName}
+          </h2>
+          {breadcrumb ? (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground" title={breadcrumb}>
+              {breadcrumb}
+            </p>
+          ) : null}
         </div>
         {showCloseButton ? (
           <Button
@@ -79,54 +94,27 @@ export function SourcePanelContent({
         <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Retrieved excerpt
         </p>
-        <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm leading-relaxed text-black">
-          {citation.excerpt.split(citation.highlightedText).map((part, index, parts) => (
-            <span key={`${citation.id}-${index}`}>
-              {part}
-              {index < parts.length - 1 ? (
-                <mark className="rounded-sm bg-amber-200/80 px-0.5 text-black dark:bg-amber-500/30 dark:text-black">
-                  {citation.highlightedText}
-                </mark>
-              ) : null}
-            </span>
-          ))}
+        <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap text-black">
+          <Excerpt citation={citation} />
         </div>
-
-        {citation.url ? (
-          <a
-            href={citation.url}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-          >
-            <ExternalLinkIcon className="size-3.5" />
-            Open original source
-          </a>
-        ) : null}
       </div>
 
       <div className="border-t border-border px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <SourceIcon type={citation.sourceType} className="size-3.5" />
-          <span>
-            This is the exact passage used to generate the answer.
-          </span>
+          <SourceIcon type={citation.sourceKind} className="size-3.5" />
+          <span>This is the section used to generate the answer.</span>
         </div>
       </div>
     </>
   )
 }
 
-export function SourcePanel({
-  citation,
-  onClose,
-  className,
-}: SourcePanelProps) {
+export function SourcePanel({ citation, onClose, className }: SourcePanelProps) {
   return (
     <aside
       className={cn(
         "flex h-full w-full flex-col border-l border-border bg-background",
-        className
+        className,
       )}
     >
       <SourcePanelContent citation={citation} onClose={onClose} />
