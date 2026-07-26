@@ -1,0 +1,50 @@
+1. URL parsing: detect intent first
+
+A pasted URL can be ambiguous:
+
+youtube.com/watch?v=X → single video
+youtube.com/playlist?list=Y → full playlist
+youtube.com/watch?v=X&list=Y → both present — this is the tricky one. Decide upfront: does this mean "just this video" or "this video, but treat it as part of the playlist"? Most products default to single video unless the user explicitly says "process the whole playlist," since accidentally ingesting 200 videos when someone just shared one video link is a bad surprise (cost + latency).
+
+Build a small resolver that extracts video_id and/or playlist_id and returns a clear type: single_video, playlist, or ambiguous (ask the user).
+
+2. Fetching playlist contents (new API call)
+Use playlistItems.list from the Data API — this is a new endpoint beyond what you needed for single videos
+Cost: 1 quota unit per call, but each call returns up to 50 items, so a 200-video playlist needs 4 paginated calls (~4 units total) — still cheap
+This returns video IDs + basic snippet info (title, position in playlist) — not full metadata yet
+Then batch those video IDs into videos.list calls — this endpoint accepts up to 50 video IDs per single call, still costing just 1 unit regardless of how many IDs you pack in. So a 200-video playlist's full metadata costs ~4 units total, not 200.
+3. Scaling decision: how big a playlist do you actually support?
+
+This is a real product decision, not just an engineering detail:
+
+Small playlists (under ~20 videos): can process fully upfront, synchronously-ish
+Large playlists (hundreds of videos): must be queued and async — you can't make a user wait for 300 transcripts to process before answering anything
+Decide a cap or a "process incrementally" model: ingest metadata for all videos immediately (cheap), but only build the full transcript + wiki for videos on demand — i.e., when a user actually asks something that requires a specific video's content. This avoids wasting cost transcribing videos nobody asks about.
+4. Two-level indexing (this is the key architecture change)
+
+Single video had one ToC. A playlist needs two layers:
+
+Playlist-level index: one row per video — title, description, duration, position, and (once built) a one-line summary of what that video covers
+Video-level index: same per-video ToC as before (headings, timestamps, keywords), but only built when needed
+
+This mirrors real research retrieval: skim the table of contents of the whole book (playlist) first, then dive into the chapter (video) that's relevant.
+
+5. Retrieval becomes two-stage routing
+Which video(s) in the playlist is this question about? Route using the playlist-level index (titles + descriptions + one-line summaries) — cheap, since you're not touching full transcripts yet
+Which section(s) within that video? Route using that video's ToC (as before)
+Only now do you pull the actual transcript excerpt for the final answer
+
+This keeps costs proportional to what's actually asked — you never build a full wiki for videos the user never queries.
+
+6. Caching and incremental builds
+Cache at video ID granularity (not playlist ID) — the same video might appear in multiple playlists, no reason to reprocess
+Cache the playlist structure itself separately (list of video IDs + order) so re-visiting the same playlist doesn't re-fetch playlistItems.list
+If a playlist is updated (videos added/removed) — decide a refresh policy: re-check on each visit, or on a time interval, since playlists are mutable and channels do reorder/update them
+7. New failure modes specific to playlists
+Private or deleted videos inside an otherwise public playlist — playlistItems.list will still list them but videos.list returns nothing useful; handle gracefully (skip, mark as unavailable)
+Mixed languages across videos in the same playlist — your final synthesis prompt should be aware answers might draw from differently-captioned sources
+Very large playlists (500+, e.g., full channel uploads) — decide if there's a hard cap, and communicate it to the user rather than silently truncating
+Playlist ordering vs. upload date — some playlists are curated in a different order than upload date; if users ask "what's the most recent video," you need the right field, not assume position 1 = most recent
+8. What stays the same from before
+
+Everything from Phase 3 onward (routing, answer generation, timestamp citation, live-stream handling per individual video) still applies unchanged at the single-video level — the playlist work is purely an additional layer on top for organizing which video's wiki to build and query.

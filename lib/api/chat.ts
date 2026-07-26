@@ -1,10 +1,15 @@
 import { apiFetch } from "@/lib/api/client"
-import type { OptimizedQuery, SourceCitation } from "@/components/dashboard/types"
+import type {
+  OptimizedQuery,
+  PendingVideo,
+  SourceCitation,
+} from "@/components/dashboard/types"
 
 export interface AskResponse {
   answer: string
   citations: SourceCitation[]
   queries: OptimizedQuery
+  pendingVideos: PendingVideo[]
 }
 
 export function askQuestion(

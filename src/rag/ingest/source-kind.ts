@@ -1,7 +1,7 @@
-import type { SourceKind } from "@/src/rag/types";
+import type { FileSourceKind } from "@/src/rag/types";
 
 interface KindDescriptor {
-  kind: SourceKind;
+  kind: FileSourceKind;
   label: string;
   extensions: string[];
   mimeTypes: string[];
@@ -39,7 +39,7 @@ const DESCRIPTORS: KindDescriptor[] = [
 
 export const ACCEPTED_EXTENSIONS = DESCRIPTORS.flatMap((d) => d.extensions);
 
-export function getKindLabel(kind: SourceKind): string {
+export function getKindLabel(kind: FileSourceKind): string {
   return DESCRIPTORS.find((d) => d.kind === kind)?.label ?? kind;
 }
 
@@ -55,7 +55,7 @@ function getExtension(fileName: string): string {
 export function detectSourceKind(
   fileName: string,
   mimeType?: string | null,
-): SourceKind | null {
+): FileSourceKind | null {
   const extension = getExtension(fileName);
 
   const byExtension = DESCRIPTORS.find((d) => d.extensions.includes(extension));

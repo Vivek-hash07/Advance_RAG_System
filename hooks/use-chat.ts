@@ -53,6 +53,7 @@ export function useChat() {
             content: result.answer,
             citations: result.citations,
             queries: result.queries,
+            pendingVideos: result.pendingVideos,
             createdAt: formatClockTime(),
           },
         ])

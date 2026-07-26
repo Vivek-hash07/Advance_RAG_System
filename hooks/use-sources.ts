@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import type { KnowledgeSource } from "@/components/dashboard/types"
 import {
+  addLinkSource,
   deleteSource,
   fetchSourceStatus,
   fetchSources,
@@ -68,15 +69,36 @@ export function useSources(initialSources: KnowledgeSource[]) {
     return () => clearInterval(timer)
   }, [pendingKey])
 
-  const upload = useCallback(async (file: File) => {
-    const { document } = await uploadSource(file)
+  /** Add a new source, or replace it in place when it was already listed. */
+  const absorb = useCallback((document: KnowledgeSource) => {
+    if (!isMountedRef.current) return
 
-    if (isMountedRef.current) {
-      setSources((current) => [document, ...current])
-    }
-
-    return document
+    setSources((current) =>
+      current.some((source) => source.id === document.id)
+        ? current.map((source) =>
+            source.id === document.id ? document : source,
+          )
+        : [document, ...current],
+    )
   }, [])
+
+  const upload = useCallback(
+    async (file: File) => {
+      const { document } = await uploadSource(file)
+      absorb(document)
+      return document
+    },
+    [absorb],
+  )
+
+  const addLink = useCallback(
+    async (url: string, preference?: "video" | "playlist") => {
+      const { document } = await addLinkSource(url, preference)
+      absorb(document)
+      return document
+    },
+    [absorb],
+  )
 
   const remove = useCallback(async (id: string) => {
     // Drop it locally first, then restore on failure so the list stays truthful.
@@ -107,6 +129,7 @@ export function useSources(initialSources: KnowledgeSource[]) {
     sources,
     readySources: sources.filter((source) => source.status === "ready"),
     upload,
+    addLink,
     remove,
     refresh,
   }

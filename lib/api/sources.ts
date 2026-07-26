@@ -12,6 +12,28 @@ export function uploadSource(file: File): Promise<{ document: KnowledgeSource }>
   return apiFetch("/api/sources", { method: "POST", body })
 }
 
+/** Server response to a link that contains both a video and a playlist. */
+export interface YoutubeChoice {
+  video: { id: string; title: string }
+  playlist: { id: string; title: string; itemCount: number }
+}
+
+export interface AmbiguousLinkBody {
+  error: string
+  choice: YoutubeChoice
+}
+
+export function addLinkSource(
+  url: string,
+  preference?: "video" | "playlist",
+): Promise<{ document: KnowledgeSource }> {
+  return apiFetch("/api/sources", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, preference }),
+  })
+}
+
 export function fetchSourceStatus(
   id: string,
 ): Promise<{ document: KnowledgeSource }> {

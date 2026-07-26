@@ -4,6 +4,7 @@ import {
   FileTypeIcon,
   GlobeIcon,
   ImageIcon,
+  ListVideoIcon,
   VideoIcon,
 } from "lucide-react"
 
@@ -16,6 +17,7 @@ const ICONS = {
   vtt: CaptionsIcon,
   webpage: GlobeIcon,
   youtube: VideoIcon,
+  playlist: ListVideoIcon,
   image: ImageIcon,
 } as const
 

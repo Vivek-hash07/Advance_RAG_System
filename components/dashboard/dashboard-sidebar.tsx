@@ -99,7 +99,7 @@ export function DashboardSidebar({
             Add source
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            PDF, Word, text, Markdown and VTT transcripts.
+            Documents, transcripts, and YouTube videos or playlists.
           </p>
         </div>
 
@@ -126,7 +126,7 @@ export function DashboardSidebar({
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">{option.label}</span>
                 <span className="block truncate text-xs text-muted-foreground">
-                  {option.enabled ? "Upload file" : "Coming soon"}
+                  {option.action}
                 </span>
               </span>
               {option.enabled ? (

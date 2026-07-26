@@ -11,6 +11,30 @@ export const ragConfig = {
   ingest: {
     maxFileBytes: Number(process.env.MAX_UPLOAD_BYTES) || 25 * 1024 * 1024,
   },
+  youtube: {
+    apiKey: process.env.YOUTUBE_API_KEY,
+    /**
+     * Hard cap on playlist size. Playlists longer than this are truncated to the
+     * first N videos and the user is told, rather than silently losing the tail.
+     */
+    maxPlaylistVideos: Number(process.env.YOUTUBE_MAX_PLAYLIST_VIDEOS) || 200,
+    /**
+     * Playlists at or below this size get every transcript built at ingest time.
+     * Larger ones only index metadata upfront and build transcripts on demand,
+     * so nobody pays to transcribe videos that are never asked about.
+     */
+    eagerBuildMaxVideos: Number(process.env.YOUTUBE_EAGER_BUILD_MAX) || 20,
+    /** Videos a single playlist may contribute to one question, after routing. */
+    videosPerQuery: Number(process.env.YOUTUBE_VIDEOS_PER_QUERY) || 3,
+    /** How long a cached playlist listing is trusted before re-fetching it. */
+    playlistRefreshMs:
+      Number(process.env.YOUTUBE_PLAYLIST_REFRESH_MS) || 6 * 60 * 60 * 1000,
+    /** Caption language preference, most wanted first. */
+    transcriptLanguages: (process.env.YOUTUBE_TRANSCRIPT_LANGUAGES ?? "en")
+      .split(",")
+      .map((code) => code.trim())
+      .filter(Boolean),
+  },
   retrieval: {
     /**
      * Documents searched per question. Each one costs a section-selection call,
@@ -40,4 +64,11 @@ export function requirePageIndexKey(): string {
     throw new Error("PAGEINDEX_API_KEY is not set");
   }
   return ragConfig.pageIndex.apiKey;
+}
+
+export function requireYoutubeKey(): string {
+  if (!ragConfig.youtube.apiKey) {
+    throw new Error("YOUTUBE_API_KEY is not set");
+  }
+  return ragConfig.youtube.apiKey;
 }

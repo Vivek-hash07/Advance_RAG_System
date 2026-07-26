@@ -1,5 +1,8 @@
-/** Source formats handled by the vectorless ingest pipeline. */
-export type SourceKind = "pdf" | "doc" | "text" | "vtt";
+/** File formats accepted by the upload path. */
+export type FileSourceKind = "pdf" | "doc" | "text" | "vtt";
+
+/** Every source format handled by the vectorless ingest pipeline. */
+export type SourceKind = FileSourceKind | "youtube" | "playlist";
 
 export type IngestStatus = "queued" | "processing" | "ready" | "failed";
 
@@ -58,6 +61,8 @@ export interface RetrievedNode {
   reason: string;
   rrfScore: number;
   bestRelevance: number;
+  /** Set for YouTube sources: the video this section came from. */
+  videoId?: string | null;
 }
 
 export interface RetrievalResult {
@@ -75,12 +80,26 @@ export interface AnswerCitation {
   pageIndex: number | null;
   /** Timestamp pulled out of transcript text, when present. */
   timestamp: string | null;
+  /** Deep link back to the source, seeked to `timestamp` for videos. */
+  sourceUrl: string | null;
   excerpt: string;
   highlightedText: string;
+}
+
+/** A video the router pulled into scope but whose transcript is still building. */
+export interface PendingVideo {
+  videoId: string;
+  title: string;
 }
 
 export interface AnswerResult {
   answer: string;
   citations: AnswerCitation[];
   queries: OptimizedQuery;
+  /**
+   * Videos a playlist question routed to that are still being indexed. The
+   * answer is produced from whatever was ready, and these are surfaced so the
+   * user knows more context is on the way.
+   */
+  pendingVideos: PendingVideo[];
 }

@@ -26,9 +26,7 @@ const STATUS_STYLES = {
 
 function StatusLabel({ source }: { source: KnowledgeSource }) {
   if (source.status === "ready") {
-    const pages =
-      source.pageCount === null ? null : `${source.pageCount} pages`
-    return <span>{pages ?? "Indexed"}</span>
+    return <span>{source.detail ?? "Indexed"}</span>
   }
 
   if (source.status === "failed") {

@@ -1,6 +1,7 @@
 import { getOpenAiClient } from "@/src/lib/openai";
 import { ragConfig } from "@/src/rag/config";
 import { extractTimestamp } from "@/src/rag/pageindex/tree";
+import { videoUrl } from "@/src/rag/youtube/url";
 import type { AnswerCitation, RetrievedNode } from "@/src/rag/types";
 
 const EXCERPT_WINDOW = 900;
@@ -113,6 +114,25 @@ function buildExcerpt(
   };
 }
 
+function toSeconds(timestamp: string): number {
+  const [hours, minutes, seconds] = timestamp.split(":").map(Number);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+/**
+ * Turn a transcript citation into a link that opens the video at the moment the
+ * quote was spoken. Timestamps survive from the caption cues, through the
+ * rendered document, into the retrieved section text.
+ */
+function buildSourceUrl(
+  node: RetrievedNode,
+  timestamp: string | null,
+): string | null {
+  if (!node.videoId) return null;
+
+  return videoUrl(node.videoId, timestamp ? toSeconds(timestamp) : null);
+}
+
 export interface GeneratedAnswer {
   answer: string;
   citations: AnswerCitation[];
@@ -169,6 +189,11 @@ export async function generateAnswer(
       typeof raw?.quote === "string" ? raw.quote.trim() : "",
     );
 
+    // Prefer a timestamp inside the quoted sentence over the section's first
+    // one, so a video link lands on the line that was actually cited.
+    const timestamp =
+      extractTimestamp(highlightedText) ?? extractTimestamp(node.text);
+
     citations.push({
       id: `${node.documentId}-${node.nodeId}`,
       documentId: node.documentId,
@@ -177,7 +202,8 @@ export async function generateAnswer(
       nodeId: node.nodeId,
       title: node.title,
       pageIndex: node.pageIndex,
-      timestamp: extractTimestamp(node.text),
+      timestamp,
+      sourceUrl: buildSourceUrl(node, timestamp),
       excerpt,
       highlightedText,
     });

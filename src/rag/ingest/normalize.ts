@@ -3,7 +3,7 @@ import { parsePlainText } from "@/src/rag/ingest/parsers/plain-text";
 import { parseVtt } from "@/src/rag/ingest/parsers/vtt";
 import { textToPdf } from "@/src/rag/ingest/text-to-pdf";
 import { getKindLabel } from "@/src/rag/ingest/source-kind";
-import type { SourceKind } from "@/src/rag/types";
+import type { FileSourceKind } from "@/src/rag/types";
 
 export interface NormalizedUpload {
   /** A PDF, because PageIndex accepts nothing else. */
@@ -25,7 +25,7 @@ function titleFromFileName(fileName: string): string {
 }
 
 async function extractText(
-  kind: Exclude<SourceKind, "pdf">,
+  kind: Exclude<FileSourceKind, "pdf">,
   buffer: Buffer,
   fileName: string,
 ): Promise<string> {
@@ -53,7 +53,7 @@ async function extractText(
  * and means citations get real page numbers regardless of the input format.
  */
 export async function normalizeUpload(
-  kind: SourceKind,
+  kind: FileSourceKind,
   buffer: Buffer,
   fileName: string,
 ): Promise<NormalizedUpload> {

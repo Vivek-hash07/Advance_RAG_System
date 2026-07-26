@@ -28,7 +28,8 @@ interface DashboardShellProps {
 
 export function DashboardShell({ initialSources }: DashboardShellProps) {
   const isMobile = useMediaQuery("(max-width: 1023px)")
-  const { sources, readySources, upload, remove } = useSources(initialSources)
+  const { sources, readySources, upload, addLink, remove } =
+    useSources(initialSources)
   const { messages, isAsking, send } = useChat()
 
   const [uploadType, setUploadType] = useState<UploadType | null>(null)
@@ -170,6 +171,7 @@ export function DashboardShell({ initialSources }: DashboardShellProps) {
         open={uploadOpen}
         onOpenChange={setUploadOpen}
         onUpload={upload}
+        onAddLink={addLink}
       />
     </div>
   )

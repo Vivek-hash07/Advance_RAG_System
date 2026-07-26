@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertCircleIcon, BotIcon, UserIcon } from "lucide-react"
+import { AlertCircleIcon, BotIcon, Loader2Icon, UserIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { QueryInsight } from "@/components/dashboard/query-insight"
@@ -8,9 +8,30 @@ import {
   getCitationLocation,
   getSourceTypeLabel,
   type ChatMessage,
+  type PendingVideo,
   type SourceCitation,
 } from "@/components/dashboard/types"
 import { cn } from "@/lib/utils"
+
+/**
+ * Large playlists only transcribe a video the first time a question routes to
+ * it, so an answer can legitimately be missing context that is moments away.
+ * Saying so is more honest than answering as if those videos did not exist.
+ */
+function PendingVideosNotice({ videos }: { videos: PendingVideo[] }) {
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <Loader2Icon className="mt-0.5 size-3 shrink-0 animate-spin" />
+      <span>
+        Indexing{" "}
+        {videos.length === 1
+          ? `"${videos[0].title}"`
+          : `${videos.length} more videos from this playlist`}
+        . Ask again shortly to include them.
+      </span>
+    </div>
+  )
+}
 
 interface MessageBubbleProps {
   message: ChatMessage
@@ -86,6 +107,10 @@ export function MessageBubble({
               </button>
             ))}
           </div>
+        ) : null}
+
+        {message.pendingVideos && message.pendingVideos.length > 0 ? (
+          <PendingVideosNotice videos={message.pendingVideos} />
         ) : null}
 
         {message.queries ? <QueryInsight queries={message.queries} /> : null}

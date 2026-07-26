@@ -1,6 +1,6 @@
 "use client"
 
-import { XIcon } from "lucide-react"
+import { ExternalLinkIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -100,9 +100,25 @@ export function SourcePanelContent({
       </div>
 
       <div className="border-t border-border px-4 py-3 sm:px-5">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <SourceIcon type={citation.sourceKind} className="size-3.5" />
-          <span>This is the section used to generate the answer.</span>
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-2">
+            <SourceIcon type={citation.sourceKind} className="size-3.5" />
+            <span className="truncate">
+              This is the section used to generate the answer.
+            </span>
+          </span>
+
+          {citation.sourceUrl ? (
+            <a
+              href={citation.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              {citation.timestamp ? `Watch at ${citation.timestamp}` : "Watch"}
+              <ExternalLinkIcon className="size-3" />
+            </a>
+          ) : null}
         </div>
       </div>
     </>

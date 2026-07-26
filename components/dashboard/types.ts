@@ -1,8 +1,8 @@
 /** Formats the vectorless ingest pipeline can process today. */
-export type SourceKind = "pdf" | "doc" | "text" | "vtt"
+export type SourceKind = "pdf" | "doc" | "text" | "vtt" | "youtube" | "playlist"
 
 /** Source types the sidebar advertises, including ones not wired up yet. */
-export type UploadType = SourceKind | "webpage" | "youtube" | "image"
+export type UploadType = SourceKind | "webpage" | "image"
 
 export type SourceStatus = "queued" | "processing" | "ready" | "failed"
 
@@ -14,6 +14,9 @@ export interface KnowledgeSource {
   status: SourceStatus
   errorMessage: string | null
   pageCount: number | null
+  sourceUrl: string | null
+  /** Human-readable size, e.g. "42 pages" or "18 videos". */
+  detail: string | null
   createdAt: string
 }
 
@@ -27,8 +30,16 @@ export interface SourceCitation {
   title: string
   pageIndex: number | null
   timestamp: string | null
+  /** Deep link back to the source, seeked to `timestamp` for videos. */
+  sourceUrl: string | null
   excerpt: string
   highlightedText: string
+}
+
+/** A video a playlist question needed that is still being transcribed. */
+export interface PendingVideo {
+  videoId: string
+  title: string
 }
 
 export interface OptimizedQuery {
@@ -45,6 +56,7 @@ export interface ChatMessage {
   content: string
   citations?: SourceCitation[]
   queries?: OptimizedQuery
+  pendingVideos?: PendingVideo[]
   error?: boolean
   createdAt: string
 }
@@ -53,7 +65,11 @@ interface UploadOption {
   type: UploadType
   label: string
   description: string
+  /** How the source is added: a file picker or a pasted link. */
+  input: "file" | "url"
   accept?: string
+  /** Short hint shown under the label in the sidebar. */
+  action: string
   /** Unwired source types stay visible but disabled. */
   enabled: boolean
 }
@@ -63,46 +79,61 @@ export const UPLOAD_OPTIONS: UploadOption[] = [
     type: "pdf",
     label: "PDF",
     description: "Upload a PDF document",
+    input: "file",
     accept: ".pdf",
+    action: "Upload file",
     enabled: true,
   },
   {
     type: "doc",
     label: "Word document",
     description: "Upload a .docx file",
+    input: "file",
     accept: ".docx",
+    action: "Upload file",
     enabled: true,
   },
   {
     type: "text",
     label: "Text or Markdown",
     description: "Upload a .txt or .md file",
+    input: "file",
     accept: ".txt,.md,.markdown",
+    action: "Upload file",
     enabled: true,
   },
   {
     type: "vtt",
     label: "VTT transcript",
     description: "Upload a WebVTT subtitle or transcript file",
+    input: "file",
     accept: ".vtt",
+    action: "Upload file",
+    enabled: true,
+  },
+  {
+    type: "youtube",
+    label: "YouTube",
+    description:
+      "Paste a video or playlist link. Captions are indexed so answers can cite exact timestamps.",
+    input: "url",
+    action: "Paste link",
     enabled: true,
   },
   {
     type: "webpage",
     label: "Webpage",
     description: "Coming soon",
-    enabled: false,
-  },
-  {
-    type: "youtube",
-    label: "YouTube video",
-    description: "Coming soon",
+    input: "url",
+    action: "Coming soon",
     enabled: false,
   },
   {
     type: "image",
     label: "Image",
     description: "Coming soon",
+    input: "file",
+    action: "Coming soon",
     enabled: false,
   },
 ]
@@ -112,8 +143,9 @@ const KIND_LABELS: Record<UploadType, string> = {
   doc: "Document",
   text: "Text",
   vtt: "Transcript",
-  webpage: "Webpage",
   youtube: "YouTube",
+  playlist: "Playlist",
+  webpage: "Webpage",
   image: "Image",
 }
 
