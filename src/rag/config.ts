@@ -1,9 +1,51 @@
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
+function resolveOpenAiBaseUrl(apiKey: string | undefined): string | undefined {
+  const configured = process.env.OPENAI_BASE_URL?.trim();
+  if (configured) return configured;
+  // OpenRouter keys are rejected by api.openai.com; route them automatically.
+  if (apiKey?.startsWith("sk-or-v1")) return OPENROUTER_BASE_URL;
+  return undefined;
+}
+
+function isOpenRouter(baseURL: string | undefined): boolean {
+  return Boolean(baseURL?.includes("openrouter.ai"));
+}
+
+/**
+ * OpenRouter expects `provider/model` (e.g. openai/gpt-4o-mini). Plain OpenAI
+ * model ids still work against api.openai.com, so only rewrite for OpenRouter.
+ */
+function resolveModel(
+  configured: string | undefined,
+  fallback: string,
+  baseURL: string | undefined,
+): string {
+  const model = configured?.trim() || fallback;
+  if (isOpenRouter(baseURL) && !model.includes("/")) {
+    return `openai/${model}`;
+  }
+  return model;
+}
+
+const openAiApiKey = process.env.OPENAI_API_KEY;
+const openAiBaseURL = resolveOpenAiBaseUrl(openAiApiKey);
+
 export const ragConfig = {
   openai: {
-    apiKey: process.env.OPENAI_API_KEY,
-    chatModel: process.env.CHAT_MODEL ?? "gpt-4o-mini",
+    apiKey: openAiApiKey,
+    /**
+     * OpenAI-compatible API root. Leave unset for api.openai.com.
+     * OpenRouter: https://openrouter.ai/api/v1 (also auto-detected for sk-or-v1 keys).
+     */
+    baseURL: openAiBaseURL,
+    chatModel: resolveModel(process.env.CHAT_MODEL, "gpt-4o-mini", openAiBaseURL),
     /** Used for node selection and answer synthesis, where reasoning quality matters most. */
-    reasoningModel: process.env.REASONING_MODEL ?? "gpt-4o-mini",
+    reasoningModel: resolveModel(
+      process.env.REASONING_MODEL,
+      "gpt-4o-mini",
+      openAiBaseURL,
+    ),
   },
   pageIndex: {
     apiKey: process.env.PAGEINDEX_API_KEY,
