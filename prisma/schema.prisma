@@ -18,6 +18,7 @@ model User {
   sessions      Session[]
   accounts      Account[]
   documents     Document[]
+  conversations Conversation[]
 
   @@unique([email])
   @@map("user")
@@ -197,4 +198,38 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+/// A multi-turn chat thread owned by one user.
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String    @default("New chat")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  messages  Message[]
+
+  @@index([userId, updatedAt])
+  @@map("conversation")
+}
+
+/// One turn in a conversation. Assistant rows may carry citation payloads.
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  /// "user" | "assistant"
+  role           String
+  content        String
+  /// AnswerCitation[] for assistant messages; null for user turns.
+  citations      Json?
+  /// OptimizedQuery snapshot for assistant messages.
+  queries        Json?
+  /// PendingVideo[] when playlist routes hit videos still building.
+  pendingVideos  Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("message")
 }

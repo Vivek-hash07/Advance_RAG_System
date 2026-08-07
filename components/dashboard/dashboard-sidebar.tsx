@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { LogOutIcon, PlusIcon } from "lucide-react"
+import { BrainIcon, LogOutIcon, MessageSquarePlusIcon, PlusIcon, Trash2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -15,10 +15,24 @@ import {
 import { authClient } from "@/src/lib/auth-client"
 import { cn } from "@/lib/utils"
 
+export interface ConversationSummary {
+  id: string
+  title: string
+  updatedAt: string
+}
+
 interface DashboardSidebarProps {
   sources: KnowledgeSource[]
+  selectedSourceIds: Set<string>
+  onToggleSource: (id: string) => void
   onUploadClick: (type: UploadType) => void
   onRemoveSource: (id: string) => Promise<void>
+  conversations?: ConversationSummary[]
+  activeConversationId?: string | null
+  onSelectConversation?: (id: string) => void
+  onNewConversation?: () => void
+  onDeleteConversation?: (id: string) => void
+  onOpenMemories?: () => void
   className?: string
 }
 
@@ -72,8 +86,16 @@ function UserFooter() {
 
 export function DashboardSidebar({
   sources,
+  selectedSourceIds,
+  onToggleSource,
   onUploadClick,
   onRemoveSource,
+  conversations = [],
+  activeConversationId = null,
+  onSelectConversation,
+  onNewConversation,
+  onDeleteConversation,
+  onOpenMemories,
   className,
 }: DashboardSidebarProps) {
   return (
@@ -94,6 +116,72 @@ export function DashboardSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
+        <div className="mb-2 flex items-center justify-between px-1">
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Chats
+          </p>
+          <div className="flex items-center gap-1">
+            {onOpenMemories ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Manage memories"
+                onClick={onOpenMemories}
+              >
+                <BrainIcon />
+              </Button>
+            ) : null}
+            {onNewConversation ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="New chat"
+                onClick={onNewConversation}
+              >
+                <MessageSquarePlusIcon />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {conversations.length > 0 ? (
+          <ul className="mb-4 grid gap-1">
+            {conversations.map((conversation) => (
+              <li key={conversation.id} className="group flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onSelectConversation?.(conversation.id)}
+                  className={cn(
+                    "min-w-0 flex-1 truncate rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
+                    activeConversationId === conversation.id
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "hover:bg-sidebar-accent/60",
+                  )}
+                >
+                  {conversation.title}
+                </button>
+                {onDeleteConversation ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Delete ${conversation.title}`}
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                    onClick={() => onDeleteConversation(conversation.id)}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mb-4 px-1 text-xs text-muted-foreground">
+            Start asking to create a conversation.
+          </p>
+        )}
+
+        <Separator className="my-4" />
+
         <div className="mb-2 px-1">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Add source
@@ -149,7 +237,12 @@ export function DashboardSidebar({
           ) : null}
         </div>
 
-        <SourceList sources={sources} onRemove={onRemoveSource} />
+        <SourceList
+          sources={sources}
+          selectedIds={selectedSourceIds}
+          onToggleSelect={onToggleSource}
+          onRemove={onRemoveSource}
+        />
       </div>
 
       <UserFooter />

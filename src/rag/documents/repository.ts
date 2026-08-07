@@ -1,6 +1,18 @@
 import type { Prisma } from "@/src/generated/prisma/client";
 import { prisma } from "@/src/lib/db";
 import type { FlatTreeNode, IngestStatus, SourceKind } from "@/src/rag/types";
+import {
+  listFailedPlaylistVideos,
+  type FailedPlaylistVideo,
+} from "@/src/rag/youtube/repository";
+
+/** Playlist honesty fields surfaced to the UI. */
+export interface PlaylistHonesty {
+  truncated: boolean;
+  unavailableCount: number;
+  failedCount: number;
+  failedVideos: FailedPlaylistVideo[];
+}
 
 /** A document as the API and UI consume it, with stored strings narrowed. */
 export interface DocumentRecord {
@@ -15,6 +27,7 @@ export interface DocumentRecord {
   hasTree: boolean;
   youtubeVideoId: string | null;
   youtubePlaylistId: string | null;
+  playlistHonesty: PlaylistHonesty | null;
   createdAt: string;
 }
 
@@ -31,6 +44,10 @@ type DocumentRow = {
   youtubeVideoId: string | null;
   youtubePlaylistId: string | null;
   createdAt: Date;
+  youtubePlaylist?: {
+    truncated: boolean;
+    unavailableCount: number;
+  } | null;
 };
 
 const SELECT = {
@@ -46,9 +63,18 @@ const SELECT = {
   youtubeVideoId: true,
   youtubePlaylistId: true,
   createdAt: true,
+  youtubePlaylist: {
+    select: {
+      truncated: true,
+      unavailableCount: true,
+    },
+  },
 } as const;
 
-function toRecord(row: DocumentRow): DocumentRecord {
+function toRecord(
+  row: DocumentRow,
+  playlistHonesty: PlaylistHonesty | null = null,
+): DocumentRecord {
   return {
     id: row.id,
     name: row.name,
@@ -61,8 +87,29 @@ function toRecord(row: DocumentRow): DocumentRecord {
     hasTree: row.tree !== null,
     youtubeVideoId: row.youtubeVideoId,
     youtubePlaylistId: row.youtubePlaylistId,
+    playlistHonesty,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+async function withPlaylistHonesty(
+  rows: DocumentRow[],
+): Promise<DocumentRecord[]> {
+  return Promise.all(
+    rows.map(async (row) => {
+      if (!row.youtubePlaylistId || !row.youtubePlaylist) {
+        return toRecord(row, null);
+      }
+
+      const failedVideos = await listFailedPlaylistVideos(row.youtubePlaylistId);
+      return toRecord(row, {
+        truncated: row.youtubePlaylist.truncated,
+        unavailableCount: row.youtubePlaylist.unavailableCount,
+        failedCount: failedVideos.length,
+        failedVideos,
+      });
+    }),
+  );
 }
 
 export async function createDocument(input: {
@@ -82,7 +129,8 @@ export async function createDocument(input: {
     select: SELECT,
   });
 
-  return toRecord(row);
+  const [record] = await withPlaylistHonesty([row]);
+  return record;
 }
 
 /**
@@ -98,7 +146,9 @@ export async function findDocumentByRelation(
     select: SELECT,
   });
 
-  return row ? toRecord(row) : null;
+  if (!row) return null;
+  const [record] = await withPlaylistHonesty([row]);
+  return record;
 }
 
 export async function listDocuments(userId: string): Promise<DocumentRecord[]> {
@@ -108,7 +158,7 @@ export async function listDocuments(userId: string): Promise<DocumentRecord[]> {
     select: SELECT,
   });
 
-  return rows.map(toRecord);
+  return withPlaylistHonesty(rows);
 }
 
 export async function findDocument(
@@ -120,7 +170,9 @@ export async function findDocument(
     select: SELECT,
   });
 
-  return row ? toRecord(row) : null;
+  if (!row) return null;
+  const [record] = await withPlaylistHonesty([row]);
+  return record;
 }
 
 /** An uploaded file, searched directly through its own cached tree. */
@@ -255,7 +307,8 @@ export async function updateDocumentStatus(
     select: SELECT,
   });
 
-  return toRecord(row);
+  const [record] = await withPlaylistHonesty([row]);
+  return record;
 }
 
 export async function findDocumentById(
@@ -266,7 +319,9 @@ export async function findDocumentById(
     select: SELECT,
   });
 
-  return row ? toRecord(row) : null;
+  if (!row) return null;
+  const [record] = await withPlaylistHonesty([row]);
+  return record;
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {

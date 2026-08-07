@@ -11,6 +11,14 @@ const SYSTEM_PROMPT =
   "- If the sections do not contain the answer, say so plainly. Never use outside knowledge.\n" +
   "- Be concise and direct. Do not restate the question.\n" +
   "- Do not write inline citation markers in the answer text.\n" +
+  "- Answer in the same language as the user's question, even when source captions " +
+  "or documents are in a different language. You may quote foreign-language sources " +
+  "verbatim in citations; paraphrase their meaning in the answer language when needed.\n" +
+  "- When sections disagree across languages, note the conflict briefly rather than " +
+  "picking one silently.\n" +
+  "- Durable user memories (preferences, decisions) may shape tone and assumptions, " +
+  "but factual claims about documents must still come from the context sections.\n" +
+  "- Prior chat turns are for continuity only; they are not evidence.\n" +
   "- For every section you actually relied on, add one citation.\n" +
   "- A citation's quote MUST be copied verbatim from that section, 1-2 sentences long, " +
   "and must be the sentence that most directly supports your answer.\n" +
@@ -55,6 +63,18 @@ const RESPONSE_FORMAT = {
   },
 };
 
+export interface ChatHistoryTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface GenerateAnswerOptions {
+  history?: ChatHistoryTurn[];
+  memories?: string[];
+  /** Called with newly decoded answer text while the JSON response streams. */
+  onDelta?: (text: string) => void;
+}
+
 function buildContext(nodes: RetrievedNode[]): string {
   return nodes
     .map((node, index) => {
@@ -68,6 +88,87 @@ function buildContext(nodes: RetrievedNode[]): string {
       ].join("\n");
     })
     .join("\n\n---\n\n");
+}
+
+function buildUserPrompt(
+  question: string,
+  nodes: RetrievedNode[],
+  options?: GenerateAnswerOptions,
+): string {
+  const parts: string[] = [];
+
+  if (options?.memories?.length) {
+    parts.push(
+      "User memories (preferences / durable facts — not source evidence):",
+      ...options.memories.map((memory) => `- ${memory}`),
+      "",
+    );
+  }
+
+  if (options?.history?.length) {
+    parts.push(
+      "Recent conversation:",
+      ...options.history.map(
+        (turn) => `${turn.role === "user" ? "User" : "Assistant"}: ${turn.content}`,
+      ),
+      "",
+    );
+  }
+
+  parts.push(
+    `Context sections:\n\n${buildContext(nodes)}`,
+    "",
+    `Question: ${question}`,
+  );
+
+  return parts.join("\n");
+}
+
+/**
+ * Pull a growing JSON string value for `"answer"` out of a partial response so
+ * the UI can stream tokens before the citations object is complete.
+ */
+function extractPartialAnswer(buffer: string): string | null {
+  const marker = '"answer"';
+  const at = buffer.indexOf(marker);
+  if (at === -1) return null;
+
+  let i = at + marker.length;
+  while (i < buffer.length && (buffer[i] === " " || buffer[i] === "\t" || buffer[i] === "\n" || buffer[i] === "\r" || buffer[i] === ":")) {
+    i += 1;
+  }
+  if (buffer[i] !== '"') return null;
+  i += 1;
+
+  let raw = "";
+  let escaped = false;
+  for (; i < buffer.length; i += 1) {
+    const ch = buffer[i];
+    if (escaped) {
+      raw += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      raw += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      break;
+    }
+    raw += ch;
+  }
+
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    return raw
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  }
 }
 
 /**
@@ -138,38 +239,10 @@ export interface GeneratedAnswer {
   citations: AnswerCitation[];
 }
 
-/** Synthesise an answer from the retrieved sections and map it back to citations. */
-export async function generateAnswer(
-  question: string,
+function mapCitations(
   nodes: RetrievedNode[],
-): Promise<GeneratedAnswer> {
-  if (nodes.length === 0) {
-    return {
-      answer:
-        "I couldn't find anything relevant in your sources to answer that. Try rephrasing the question, or add a source that covers this topic.",
-      citations: [],
-    };
-  }
-
-  const openai = getOpenAiClient();
-
-  const completion = await openai.chat.completions.create({
-    model: ragConfig.openai.reasoningModel,
-    temperature: 0.2,
-    response_format: RESPONSE_FORMAT,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Context sections:\n\n${buildContext(nodes)}\n\nQuestion: ${question}`,
-      },
-    ],
-  });
-
-  const parsed = JSON.parse(
-    completion.choices[0]?.message?.content ?? "{}",
-  ) as { answer?: string; citations?: Array<{ section?: number; quote?: string }> };
-
+  parsed: { answer?: string; citations?: Array<{ section?: number; quote?: string }> },
+): GeneratedAnswer {
   const answer =
     parsed.answer?.trim() ||
     "I couldn't produce an answer from the retrieved sections.";
@@ -210,4 +283,74 @@ export async function generateAnswer(
   }
 
   return { answer, citations };
+}
+
+/** Synthesise an answer from the retrieved sections and map it back to citations. */
+export async function generateAnswer(
+  question: string,
+  nodes: RetrievedNode[],
+  options?: GenerateAnswerOptions,
+): Promise<GeneratedAnswer> {
+  if (nodes.length === 0) {
+    return {
+      answer:
+        "I couldn't find anything relevant in your sources to answer that. Try rephrasing the question, or add a source that covers this topic.",
+      citations: [],
+    };
+  }
+
+  const openai = getOpenAiClient();
+  const messages = [
+    { role: "system" as const, content: SYSTEM_PROMPT },
+    {
+      role: "user" as const,
+      content: buildUserPrompt(question, nodes, options),
+    },
+  ];
+
+  if (options?.onDelta) {
+    const stream = await openai.chat.completions.create({
+      model: ragConfig.openai.reasoningModel,
+      temperature: 0.2,
+      response_format: RESPONSE_FORMAT,
+      stream: true,
+      messages,
+    });
+
+    let buffer = "";
+    let emitted = "";
+
+    for await (const chunk of stream) {
+      const piece = chunk.choices[0]?.delta?.content ?? "";
+      if (!piece) continue;
+      buffer += piece;
+
+      const partial = extractPartialAnswer(buffer);
+      if (partial !== null && partial.length > emitted.length) {
+        const delta = partial.slice(emitted.length);
+        emitted = partial;
+        options.onDelta(delta);
+      }
+    }
+
+    const parsed = JSON.parse(buffer || "{}") as {
+      answer?: string;
+      citations?: Array<{ section?: number; quote?: string }>;
+    };
+
+    return mapCitations(nodes, parsed);
+  }
+
+  const completion = await openai.chat.completions.create({
+    model: ragConfig.openai.reasoningModel,
+    temperature: 0.2,
+    response_format: RESPONSE_FORMAT,
+    messages,
+  });
+
+  const parsed = JSON.parse(
+    completion.choices[0]?.message?.content ?? "{}",
+  ) as { answer?: string; citations?: Array<{ section?: number; quote?: string }> };
+
+  return mapCitations(nodes, parsed);
 }

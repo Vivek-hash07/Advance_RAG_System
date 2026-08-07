@@ -37,7 +37,7 @@ export function toErrorResponse(error: unknown): NextResponse {
   const message =
     error instanceof Error ? error.message : "Something went wrong.";
 
-  if (/OPENAI_API_KEY|PAGEINDEX_API_KEY|YOUTUBE_API_KEY/.test(message)) {
+  if (/OPENAI_API_KEY|PAGEINDEX_API_KEY|YOUTUBE_API_KEY|MEM0_API_KEY/.test(message)) {
     return NextResponse.json({ error: message }, { status: 503 });
   }
 

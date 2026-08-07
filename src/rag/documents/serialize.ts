@@ -1,6 +1,12 @@
 import type { DocumentRecord } from "@/src/rag/documents/repository";
 import type { IngestStatus, SourceKind } from "@/src/rag/types";
 
+export interface PublicFailedVideo {
+  videoId: string;
+  title: string;
+  errorMessage: string | null;
+}
+
 /** A source as exposed to the browser. Internal PageIndex ids stay server-side. */
 export interface PublicSource {
   id: string;
@@ -12,13 +18,34 @@ export interface PublicSource {
   sourceUrl: string | null;
   /** Human-readable size of the source: pages for files, videos for playlists. */
   detail: string | null;
+  /** Playlist ingest honesty — null for non-playlist sources. */
+  truncated: boolean | null;
+  unavailableCount: number | null;
+  failedCount: number | null;
+  failedVideos: PublicFailedVideo[];
   createdAt: string;
 }
 
 function describeSize(record: DocumentRecord): string | null {
   if (record.sourceKind === "playlist") {
     if (record.pageCount === null) return null;
-    return `${record.pageCount} ${record.pageCount === 1 ? "video" : "videos"}`;
+    const base = `${record.pageCount} ${record.pageCount === 1 ? "video" : "videos"}`;
+    const honesty = record.playlistHonesty;
+    if (!honesty) return base;
+
+    const notes: string[] = [];
+    if (honesty.truncated) notes.push("truncated");
+    if (honesty.unavailableCount > 0) {
+      notes.push(
+        `${honesty.unavailableCount} unavailable`,
+      );
+    }
+    if (honesty.failedCount > 0) {
+      notes.push(
+        `${honesty.failedCount} failed`,
+      );
+    }
+    return notes.length ? `${base} · ${notes.join(", ")}` : base;
   }
 
   if (record.sourceKind === "youtube") {
@@ -30,6 +57,8 @@ function describeSize(record: DocumentRecord): string | null {
 }
 
 export function toPublicSource(record: DocumentRecord): PublicSource {
+  const honesty = record.playlistHonesty;
+
   return {
     id: record.id,
     name: record.name,
@@ -39,6 +68,10 @@ export function toPublicSource(record: DocumentRecord): PublicSource {
     pageCount: record.pageCount,
     sourceUrl: record.sourceUrl,
     detail: record.status === "ready" ? describeSize(record) : null,
+    truncated: honesty?.truncated ?? null,
+    unavailableCount: honesty?.unavailableCount ?? null,
+    failedCount: honesty?.failedCount ?? null,
+    failedVideos: honesty?.failedVideos ?? [],
     createdAt: record.createdAt,
   };
 }

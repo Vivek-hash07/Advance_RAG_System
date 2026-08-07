@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { MenuIcon, PanelRightIcon } from "lucide-react"
 
 import { ChatPanel } from "@/components/dashboard/chat-panel"
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
+import { MemoriesDialog } from "@/components/dashboard/memories-dialog"
 import {
   SourcePanel,
   SourcePanelContent,
@@ -30,10 +31,34 @@ export function DashboardShell({ initialSources }: DashboardShellProps) {
   const isMobile = useMediaQuery("(max-width: 1023px)")
   const { sources, readySources, upload, addLink, remove } =
     useSources(initialSources)
-  const { messages, isAsking, send } = useChat()
+
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(
+    () => new Set(),
+  )
+
+  const selectedDocumentIds = useMemo(
+    () =>
+      readySources
+        .map((source) => source.id)
+        .filter((id) => selectedSourceIds.has(id)),
+    [readySources, selectedSourceIds],
+  )
+
+  const {
+    messages,
+    isAsking,
+    statusLabel,
+    conversationId,
+    conversations,
+    send,
+    loadConversation,
+    startNewConversation,
+    removeConversation,
+  } = useChat(selectedDocumentIds)
 
   const [uploadType, setUploadType] = useState<UploadType | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [memoriesOpen, setMemoriesOpen] = useState(false)
   const [selectedCitation, setSelectedCitation] =
     useState<SourceCitation | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -68,8 +93,23 @@ export function DashboardShell({ initialSources }: DashboardShellProps) {
     }
   }
 
+  function handleToggleSource(id: string) {
+    setSelectedSourceIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   async function handleRemoveSource(id: string) {
     await remove(id)
+    setSelectedSourceIds((current) => {
+      if (!current.has(id)) return current
+      const next = new Set(current)
+      next.delete(id)
+      return next
+    })
     // A citation pointing at a deleted source has nothing left to show.
     setSelectedCitation((current) =>
       current?.documentId === id ? null : current,
@@ -79,8 +119,24 @@ export function DashboardShell({ initialSources }: DashboardShellProps) {
   const sidebar = (
     <DashboardSidebar
       sources={sources}
+      selectedSourceIds={selectedSourceIds}
+      onToggleSource={handleToggleSource}
       onUploadClick={handleUploadClick}
       onRemoveSource={handleRemoveSource}
+      conversations={conversations}
+      activeConversationId={conversationId}
+      onSelectConversation={(id) => {
+        void loadConversation(id)
+        setSidebarOpen(false)
+      }}
+      onNewConversation={() => {
+        startNewConversation()
+        setSidebarOpen(false)
+      }}
+      onDeleteConversation={(id) => {
+        void removeConversation(id)
+      }}
+      onOpenMemories={() => setMemoriesOpen(true)}
     />
   )
 
@@ -123,6 +179,7 @@ export function DashboardShell({ initialSources }: DashboardShellProps) {
           <ChatPanel
             messages={messages}
             isAsking={isAsking}
+            statusLabel={statusLabel}
             readySourceCount={readySources.length}
             hasProcessingSources={hasProcessingSources}
             onSend={send}
@@ -173,6 +230,8 @@ export function DashboardShell({ initialSources }: DashboardShellProps) {
         onUpload={upload}
         onAddLink={addLink}
       />
+
+      <MemoriesDialog open={memoriesOpen} onOpenChange={setMemoriesOpen} />
     </div>
   )
 }

@@ -426,6 +426,40 @@ export async function summarizePlaylistProgress(
   return progress;
 }
 
+/** Videos in a playlist whose transcripts failed or are unavailable. */
+export interface FailedPlaylistVideo {
+  videoId: string;
+  title: string;
+  errorMessage: string | null;
+}
+
+export async function listFailedPlaylistVideos(
+  playlistRowId: string,
+): Promise<FailedPlaylistVideo[]> {
+  const rows = await prisma.youtubePlaylistItem.findMany({
+    where: {
+      playlistId: playlistRowId,
+      video: { transcriptStatus: "failed" },
+    },
+    orderBy: { position: "asc" },
+    select: {
+      video: {
+        select: {
+          videoId: true,
+          title: true,
+          errorMessage: true,
+        },
+      },
+    },
+  });
+
+  return rows.map((row) => ({
+    videoId: row.video.videoId,
+    title: row.video.title,
+    errorMessage: row.video.errorMessage,
+  }));
+}
+
 /** PageIndex documents that would be orphaned by deleting this playlist. */
 export async function findOrphanedPlaylistDocIds(
   playlistRowId: string,

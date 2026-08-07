@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 interface ChatPanelProps {
   messages: ChatMessage[]
   isAsking: boolean
+  statusLabel?: string | null
   readySourceCount: number
   hasProcessingSources: boolean
   onSend: (question: string) => void
@@ -60,6 +61,7 @@ function EmptyState({
 export function ChatPanel({
   messages,
   isAsking,
+  statusLabel,
   readySourceCount,
   hasProcessingSources,
   onSend,
@@ -118,10 +120,11 @@ export function ChatPanel({
           ))
         )}
 
-        {isAsking ? (
+        {isAsking && (statusLabel || !messages.some((m) => m.role === "assistant" && m.content)) ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2Icon className="size-4 animate-spin" />
-            Expanding your question and searching your sources...
+            {statusLabel ??
+              "Expanding your question and searching your sources..."}
           </div>
         ) : null}
       </div>

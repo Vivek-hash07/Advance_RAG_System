@@ -1,7 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { AlertCircleIcon, Loader2Icon, Trash2Icon } from "lucide-react"
+import {
+  AlertCircleIcon,
+  ChevronDownIcon,
+  Loader2Icon,
+  Trash2Icon,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { SourceIcon } from "@/components/dashboard/source-icon"
@@ -14,6 +19,8 @@ import { cn } from "@/lib/utils"
 
 interface SourceListProps {
   sources: KnowledgeSource[]
+  selectedIds: Set<string>
+  onToggleSelect: (id: string) => void
   onRemove: (id: string) => Promise<void>
 }
 
@@ -41,14 +48,80 @@ function StatusLabel({ source }: { source: KnowledgeSource }) {
   )
 }
 
+function PlaylistHonesty({ source }: { source: KnowledgeSource }) {
+  const [open, setOpen] = useState(false)
+  const hasFailed = (source.failedCount ?? 0) > 0
+  const hasUnavailable = (source.unavailableCount ?? 0) > 0
+  const truncated = source.truncated === true
+
+  if (!truncated && !hasUnavailable && !hasFailed) return null
+
+  return (
+    <div className="mt-1.5 space-y-1">
+      {truncated ? (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          Playlist truncated to the ingest cap — later videos were skipped.
+        </p>
+      ) : null}
+      {hasUnavailable ? (
+        <p className="text-xs text-muted-foreground">
+          {source.unavailableCount}{" "}
+          {source.unavailableCount === 1 ? "entry was" : "entries were"}{" "}
+          private or deleted.
+        </p>
+      ) : null}
+      {hasFailed ? (
+        <div>
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="inline-flex items-center gap-1 text-xs text-destructive"
+          >
+            <AlertCircleIcon className="size-3" />
+            {source.failedCount}{" "}
+            {source.failedCount === 1 ? "video" : "videos"} failed to index
+            <ChevronDownIcon
+              className={cn(
+                "size-3 transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          </button>
+          {open ? (
+            <ul className="mt-1 space-y-1 border-l border-destructive/30 pl-2">
+              {source.failedVideos.map((video) => (
+                <li key={video.videoId} className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {video.title}
+                  </span>
+                  {video.errorMessage ? (
+                    <span className="block text-destructive">
+                      {video.errorMessage}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function SourceRow({
   source,
+  selected,
+  onToggleSelect,
   onRemove,
 }: {
   source: KnowledgeSource
+  selected: boolean
+  onToggleSelect: (id: string) => void
   onRemove: (id: string) => Promise<void>
 }) {
   const [isRemoving, setIsRemoving] = useState(false)
+  const canSelect = source.status === "ready"
 
   async function handleRemove() {
     setIsRemoving(true)
@@ -60,7 +133,21 @@ function SourceRow({
   }
 
   return (
-    <li className="group flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2.5">
+    <li className="group flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2.5">
+      <input
+        type="checkbox"
+        className="mt-2 size-3.5 shrink-0 accent-foreground"
+        checked={selected}
+        disabled={!canSelect}
+        onChange={() => onToggleSelect(source.id)}
+        aria-label={`Include ${source.name} in questions`}
+        title={
+          canSelect
+            ? "Include this source when asking"
+            : "Source must be ready before it can be scoped"
+        }
+      />
+
       <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
         <SourceIcon
           type={source.sourceKind}
@@ -72,7 +159,7 @@ function SourceRow({
         <span className="block truncate text-sm font-medium" title={source.name}>
           {source.name}
         </span>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>{getSourceTypeLabel(source.sourceKind)}</span>
           <span>·</span>
           <StatusLabel source={source} />
@@ -84,6 +171,9 @@ function SourceRow({
             <AlertCircleIcon className="mt-0.5 size-3 shrink-0" />
             {source.errorMessage}
           </span>
+        ) : null}
+        {source.sourceKind === "playlist" ? (
+          <PlaylistHonesty source={source} />
         ) : null}
       </span>
 
@@ -114,7 +204,12 @@ function SourceRow({
   )
 }
 
-export function SourceList({ sources, onRemove }: SourceListProps) {
+export function SourceList({
+  sources,
+  selectedIds,
+  onToggleSelect,
+  onRemove,
+}: SourceListProps) {
   if (sources.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
@@ -126,11 +221,31 @@ export function SourceList({ sources, onRemove }: SourceListProps) {
     )
   }
 
+  const readyCount = sources.filter((source) => source.status === "ready").length
+  const selectedReady = sources.filter(
+    (source) => source.status === "ready" && selectedIds.has(source.id),
+  ).length
+
   return (
-    <ul className="grid gap-1.5">
-      {sources.map((source) => (
-        <SourceRow key={source.id} source={source} onRemove={onRemove} />
-      ))}
-    </ul>
+    <div className="grid gap-1.5">
+      {readyCount > 0 ? (
+        <p className="px-1 text-[11px] text-muted-foreground">
+          {selectedReady === 0 || selectedReady === readyCount
+            ? "Asking across all ready sources"
+            : `Asking across ${selectedReady} of ${readyCount} ready sources`}
+        </p>
+      ) : null}
+      <ul className="grid gap-1.5">
+        {sources.map((source) => (
+          <SourceRow
+            key={source.id}
+            source={source}
+            selected={selectedIds.has(source.id)}
+            onToggleSelect={onToggleSelect}
+            onRemove={onRemove}
+          />
+        ))}
+      </ul>
+    </div>
   )
 }

@@ -11,8 +11,10 @@ const SYSTEM_PROMPT =
   "Decide which videos would actually contain the answer, then return their ids " +
   "ranked most relevant first. Rules:\n" +
   "- Only return ids that appear verbatim in the list.\n" +
-  "- Position is the creator's ordering, NOT upload order. For questions about " +
-  "what is newest, latest or most recent, compare the publish dates.\n" +
+  "- Position (#1, #2, …) is the creator's curation order, NOT upload or publish order. " +
+  "For questions about newest, latest, most recent, or last uploaded, sort by the " +
+  "ISO publish dates shown — never by position. Example: #1 published 2020-01-01 is " +
+  "older than #5 published 2024-06-01.\n" +
   "- Return an empty list if no video plausibly covers the question. Never guess.\n" +
   "- relevance is 0.0-1.0 for how likely that video contains the answer.\n" +
   "- reason is one short sentence explaining the match.";

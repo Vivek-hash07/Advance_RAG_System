@@ -17,6 +17,14 @@ export interface KnowledgeSource {
   sourceUrl: string | null
   /** Human-readable size, e.g. "42 pages" or "18 videos". */
   detail: string | null
+  truncated: boolean | null
+  unavailableCount: number | null
+  failedCount: number | null
+  failedVideos: Array<{
+    videoId: string
+    title: string
+    errorMessage: string | null
+  }>
   createdAt: string
 }
 
