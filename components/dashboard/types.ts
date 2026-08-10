@@ -1,8 +1,16 @@
 /** Formats the vectorless ingest pipeline can process today. */
-export type SourceKind = "pdf" | "doc" | "text" | "vtt" | "youtube" | "playlist"
+export type SourceKind =
+  | "pdf"
+  | "doc"
+  | "text"
+  | "vtt"
+  | "image"
+  | "youtube"
+  | "playlist"
+  | "webpage"
 
-/** Source types the sidebar advertises, including ones not wired up yet. */
-export type UploadType = SourceKind | "webpage" | "image"
+/** Source types the sidebar advertises. */
+export type UploadType = SourceKind
 
 export type SourceStatus = "queued" | "processing" | "ready" | "failed"
 
@@ -131,18 +139,21 @@ export const UPLOAD_OPTIONS: UploadOption[] = [
   {
     type: "webpage",
     label: "Webpage",
-    description: "Coming soon",
+    description:
+      "Paste a public page URL. Scrapling fetches the page; text is indexed with citations back to the link.",
     input: "url",
-    action: "Coming soon",
-    enabled: false,
+    action: "Paste link",
+    enabled: true,
   },
   {
     type: "image",
     label: "Image",
-    description: "Coming soon",
+    description:
+      "Upload a PNG, JPEG, WebP or GIF. Vision extracts text and describes diagrams for indexing.",
     input: "file",
-    action: "Coming soon",
-    enabled: false,
+    accept: ".png,.jpg,.jpeg,.webp,.gif",
+    action: "Upload image",
+    enabled: true,
   },
 ]
 

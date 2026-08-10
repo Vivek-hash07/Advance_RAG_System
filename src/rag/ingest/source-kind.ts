@@ -35,6 +35,12 @@ const DESCRIPTORS: KindDescriptor[] = [
     extensions: [".vtt"],
     mimeTypes: ["text/vtt"],
   },
+  {
+    kind: "image",
+    label: "Image",
+    extensions: [".png", ".jpg", ".jpeg", ".webp", ".gif"],
+    mimeTypes: ["image/png", "image/jpeg", "image/webp", "image/gif"],
+  },
 ];
 
 export const ACCEPTED_EXTENSIONS = DESCRIPTORS.flatMap((d) => d.extensions);

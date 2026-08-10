@@ -187,7 +187,7 @@ export function DashboardSidebar({
             Add source
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Documents, transcripts, and YouTube videos or playlists.
+            Documents, transcripts, YouTube, webpages, and images.
           </p>
         </div>
 

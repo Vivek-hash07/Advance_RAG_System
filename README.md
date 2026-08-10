@@ -1,6 +1,6 @@
 # Vectorless RAG
 
-Local RAG app that indexes PDFs and YouTube (videos + playlists) with [PageIndex](https://pageindex.ai) trees — no document embeddings. Answers cite pages or video timestamps. Auth is [Better Auth](https://www.better-auth.com/); long ingest runs through [Inngest](https://www.inngest.com/).
+Local RAG app that indexes PDFs, images, webpages, and YouTube (videos + playlists) with [PageIndex](https://pageindex.ai) trees — no document embeddings. Answers cite pages, timestamps, or original links. Auth is [Better Auth](https://www.better-auth.com/); long ingest runs through [Inngest](https://www.inngest.com/). Webpage fetch uses [Scrapling](https://scrapling.readthedocs.io/en/latest/).
 
 ## Prerequisites
 
@@ -17,6 +17,10 @@ cp .env.example .env
 npm install
 npm run db:deploy
 npm run db:generate
+
+# Webpage scraping (Scrapling) — Python 3.10+
+/opt/homebrew/bin/python3.13 -m venv scripts/scrapling/.venv
+scripts/scrapling/.venv/bin/pip install -r scripts/scrapling/requirements.txt
 ```
 
 ### Required environment variables
@@ -77,6 +81,8 @@ Manual UI smokes (signed in, with both `dev` and `inngest` running):
 1. **PDF** — upload a PDF → status `ready` → ask a question → answer includes a page citation.
 2. **YouTube video** — paste a watch URL → `ready` → ask → answer includes a timestamp deep link.
 3. **Playlist** — small playlist (≤20 videos) builds eagerly; larger ones show a pending-video notice until a routed video is built on demand.
+4. **Webpage** — paste a public URL → Scrapling scrape → `ready` → ask → citation links back to the page.
+5. **Image** — upload PNG/JPEG/WebP/GIF → vision transcription → `ready` → ask with page citations.
 
 Offline / API helpers (no full ask path):
 
@@ -84,6 +90,7 @@ Offline / API helpers (no full ask path):
 npm run verify:ingest
 npm run verify:youtube          # offline
 npm run verify:youtube -- --live  # needs YOUTUBE_API_KEY
+npm run verify:webpage          # Scrapling fetch only (no PageIndex)
 ```
 
 ## Scripts
@@ -98,6 +105,7 @@ npm run verify:youtube -- --live  # needs YOUTUBE_API_KEY
 | `npm run verify:phase0` | Env + DB + Inngest route health |
 | `npm run verify:ingest` | Offline file/PDF conversion checks |
 | `npm run verify:youtube` | YouTube URL/transcript helpers |
+| `npm run verify:webpage` | Scrapling webpage scrape (no PageIndex) |
 
 ## Product roadmap
 

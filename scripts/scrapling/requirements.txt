@@ -1,0 +1,10 @@
+# Scrapling HTTP fetcher for webpage ingest (no browser download required).
+# Docs: https://scrapling.readthedocs.io/en/latest/
+#
+# Setup (Python 3.10+):
+#   /opt/homebrew/bin/python3.13 -m venv scripts/scrapling/.venv
+#   scripts/scrapling/.venv/bin/pip install -r scripts/scrapling/requirements.txt
+#
+# Optional stealth (Playwright browsers): pip install "scrapling[fetchers]" && scrapling install
+scrapling>=0.4
+curl_cffi>=0.15.0

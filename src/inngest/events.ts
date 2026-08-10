@@ -45,3 +45,11 @@ export const playlistRefreshRequested = eventType(
   "rag/youtube.playlist.refresh",
   { schema: z.object({ playlistId: z.string() }) },
 );
+
+/** A webpage URL should be scraped (Scrapling) and submitted to PageIndex. */
+export const webpageRequested = eventType("rag/webpage.requested", {
+  schema: z.object({
+    documentId: z.string(),
+    url: z.string(),
+  }),
+});

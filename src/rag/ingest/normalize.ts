@@ -1,4 +1,5 @@
 import { parseDocx } from "@/src/rag/ingest/parsers/docx";
+import { parseImage } from "@/src/rag/ingest/parsers/image";
 import { parsePlainText } from "@/src/rag/ingest/parsers/plain-text";
 import { parseVtt } from "@/src/rag/ingest/parsers/vtt";
 import { textToPdf } from "@/src/rag/ingest/text-to-pdf";
@@ -42,6 +43,8 @@ async function extractText(
       return parsePlainText(buffer);
     case "vtt":
       return parseVtt(buffer);
+    case "image":
+      return parseImage(buffer, fileName);
   }
 }
 

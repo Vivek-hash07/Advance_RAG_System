@@ -3,12 +3,14 @@ import {
   documentSubmitted,
   playlistRequested,
   videoRequested,
+  webpageRequested,
 } from "@/src/inngest/events";
 import { ragConfig } from "@/src/rag/config";
 import * as repository from "@/src/rag/documents/repository";
 import type { DocumentRecord } from "@/src/rag/documents/repository";
 import { normalizeUpload } from "@/src/rag/ingest/normalize";
 import { detectSourceKind, ACCEPTED_EXTENSIONS } from "@/src/rag/ingest/source-kind";
+import { assertSafePublicUrl, SsrfError } from "@/src/rag/ingest/ssrf";
 import {
   deletePageIndexDocument,
   fetchTree,
@@ -30,6 +32,8 @@ export class IngestError extends Error {
     this.name = "IngestError";
   }
 }
+
+export { SsrfError };
 
 /**
  * A `watch?v=X&list=Y` link, which could reasonably mean either thing. Carries
@@ -105,6 +109,63 @@ export async function ingestUpload(
   );
 
   return document;
+}
+
+/**
+ * Queue a webpage for Scrapling scrape → PDF → PageIndex.
+ *
+ * SSRF checks run before the row is created so bad URLs never enter the queue.
+ * The slow fetch happens in Inngest; the caller gets a queued row immediately.
+ */
+export async function ingestWebpageUrl(
+  userId: string,
+  rawUrl: string,
+): Promise<DocumentRecord> {
+  let safeUrl: URL;
+  try {
+    safeUrl = await assertSafePublicUrl(rawUrl);
+  } catch (error) {
+    throw new IngestError(
+      error instanceof Error ? error.message : "Invalid webpage URL.",
+    );
+  }
+
+  const existing = await repository.findDocumentBySourceUrl(
+    userId,
+    safeUrl.href,
+    "webpage",
+  );
+  if (existing && existing.status !== "failed") {
+    return existing;
+  }
+
+  const document =
+    existing ??
+    (await repository.createDocument({
+      userId,
+      name: safeUrl.hostname.replace(/^www\./, "") || safeUrl.href,
+      sourceKind: "webpage",
+      sourceUrl: safeUrl.href,
+      status: "queued",
+    }));
+
+  if (existing?.status === "failed") {
+    await repository.updateDocumentStatus(existing.id, {
+      status: "queued",
+      errorMessage: null,
+    });
+  }
+
+  await inngest.send(
+    webpageRequested.create({
+      documentId: document.id,
+      url: safeUrl.href,
+    }),
+  );
+
+  return repository.findDocument(userId, document.id).then(
+    (row) => row ?? document,
+  );
 }
 
 /**

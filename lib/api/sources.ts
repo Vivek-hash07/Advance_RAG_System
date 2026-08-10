@@ -25,12 +25,19 @@ export interface AmbiguousLinkBody {
 
 export function addLinkSource(
   url: string,
-  preference?: "video" | "playlist",
+  options?: {
+    preference?: "video" | "playlist"
+    kind?: "youtube" | "webpage"
+  },
 ): Promise<{ document: KnowledgeSource }> {
   return apiFetch("/api/sources", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, preference }),
+    body: JSON.stringify({
+      url,
+      preference: options?.preference,
+      kind: options?.kind,
+    }),
   })
 }
 

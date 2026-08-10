@@ -92,8 +92,14 @@ export function useSources(initialSources: KnowledgeSource[]) {
   )
 
   const addLink = useCallback(
-    async (url: string, preference?: "video" | "playlist") => {
-      const { document } = await addLinkSource(url, preference)
+    async (
+      url: string,
+      options?: {
+        preference?: "video" | "playlist"
+        kind?: "youtube" | "webpage"
+      },
+    ) => {
+      const { document } = await addLinkSource(url, options)
       absorb(document)
       return document
     },

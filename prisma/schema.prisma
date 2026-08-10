@@ -73,7 +73,7 @@ model Document {
   userId         String
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name           String
-  /// "pdf" | "doc" | "text" | "vtt" | "youtube" | "playlist"
+  /// "pdf" | "doc" | "text" | "vtt" | "image" | "youtube" | "playlist" | "webpage"
   sourceKind     String
   /// Set for uploaded files only; YouTube sources index through their relation.
   pageIndexDocId String?

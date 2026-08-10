@@ -52,7 +52,7 @@ function EmptyState({
       <p className="mt-2 text-sm text-muted-foreground">
         {hasProcessingSources
           ? "Your source is being processed into a document tree. This usually takes under a minute."
-          : "Upload a PDF, Word document, text file or VTT transcript from the sidebar to get started."}
+          : "Upload a PDF, Word document, text, image, VTT transcript, webpage, or YouTube link from the sidebar to get started."}
       </p>
     </div>
   )

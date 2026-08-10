@@ -1,8 +1,8 @@
 /** File formats accepted by the upload path. */
-export type FileSourceKind = "pdf" | "doc" | "text" | "vtt";
+export type FileSourceKind = "pdf" | "doc" | "text" | "vtt" | "image";
 
 /** Every source format handled by the vectorless ingest pipeline. */
-export type SourceKind = FileSourceKind | "youtube" | "playlist";
+export type SourceKind = FileSourceKind | "youtube" | "playlist" | "webpage";
 
 export type IngestStatus = "queued" | "processing" | "ready" | "failed";
 
@@ -63,6 +63,8 @@ export interface RetrievedNode {
   bestRelevance: number;
   /** Set for YouTube sources: the video this section came from. */
   videoId?: string | null;
+  /** Canonical URL for webpage (and similar link) sources. */
+  sourceUrl?: string | null;
 }
 
 export interface RetrievalResult {

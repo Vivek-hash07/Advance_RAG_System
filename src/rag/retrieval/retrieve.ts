@@ -35,6 +35,7 @@ interface SearchUnit {
   displayName: string;
   sourceKind: SourceKind;
   videoId: string | null;
+  sourceUrl: string | null;
   nodes: FlatTreeNode[];
 }
 
@@ -87,6 +88,7 @@ async function expandPlaylist(
         displayName: `${source.name} — ${entry.title}`,
         sourceKind: "playlist",
         videoId: video.videoId,
+        sourceUrl: null,
         nodes,
       });
       continue;
@@ -159,6 +161,7 @@ async function toSearchUnits(
         displayName: source.name,
         sourceKind: source.sourceKind,
         videoId: null,
+        sourceUrl: source.sourceUrl,
         nodes: source.nodes,
       });
     }
@@ -170,6 +173,7 @@ async function toSearchUnits(
         displayName: source.name,
         sourceKind: "youtube",
         videoId: source.videoId,
+        sourceUrl: null,
         nodes: source.nodes,
       });
     }
@@ -252,6 +256,7 @@ export async function retrieveNodes(
       documentName: bucket.unit.displayName,
       sourceKind: bucket.unit.sourceKind,
       videoId: bucket.unit.videoId,
+      sourceUrl: bucket.unit.sourceUrl,
       nodeId: node.nodeId,
       title: node.title,
       pageIndex: node.pageIndex,

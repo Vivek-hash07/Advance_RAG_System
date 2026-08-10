@@ -151,6 +151,22 @@ export async function findDocumentByRelation(
   return record;
 }
 
+/** Reuse a webpage source when the user pastes the same URL again. */
+export async function findDocumentBySourceUrl(
+  userId: string,
+  sourceUrl: string,
+  sourceKind: SourceKind,
+): Promise<DocumentRecord | null> {
+  const row = await prisma.document.findFirst({
+    where: { userId, sourceUrl, sourceKind },
+    select: SELECT,
+  });
+
+  if (!row) return null;
+  const [record] = await withPlaylistHonesty([row]);
+  return record;
+}
+
 export async function listDocuments(userId: string): Promise<DocumentRecord[]> {
   const rows = await prisma.document.findMany({
     where: { userId },
@@ -181,6 +197,7 @@ export interface FileSource {
   documentId: string;
   name: string;
   sourceKind: SourceKind;
+  sourceUrl: string | null;
   nodes: FlatTreeNode[];
 }
 
@@ -232,6 +249,7 @@ export async function findRetrievableSources(
       id: true,
       name: true,
       sourceKind: true,
+      sourceUrl: true,
       tree: true,
       youtubeVideo: {
         select: { videoId: true, tree: true, transcriptStatus: true },
@@ -275,6 +293,7 @@ export async function findRetrievableSources(
         documentId: row.id,
         name: row.name,
         sourceKind: row.sourceKind as SourceKind,
+        sourceUrl: row.sourceUrl,
         nodes,
       });
     }
@@ -291,6 +310,8 @@ export async function updateDocumentStatus(
     pageCount?: number | null;
     nodes?: FlatTreeNode[];
     name?: string;
+    pageIndexDocId?: string | null;
+    sourceUrl?: string | null;
   },
 ): Promise<DocumentRecord> {
   const row = await prisma.document.update({
@@ -300,6 +321,10 @@ export async function updateDocumentStatus(
       errorMessage: data.errorMessage ?? null,
       ...(data.name === undefined ? {} : { name: data.name }),
       ...(data.pageCount === undefined ? {} : { pageCount: data.pageCount }),
+      ...(data.pageIndexDocId === undefined
+        ? {}
+        : { pageIndexDocId: data.pageIndexDocId }),
+      ...(data.sourceUrl === undefined ? {} : { sourceUrl: data.sourceUrl }),
       ...(data.nodes === undefined
         ? {}
         : { tree: data.nodes as unknown as Prisma.InputJsonValue }),

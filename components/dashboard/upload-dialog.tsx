@@ -36,7 +36,10 @@ interface UploadDialogProps {
   onUpload: (file: File) => Promise<KnowledgeSource>
   onAddLink: (
     url: string,
-    preference?: "video" | "playlist",
+    options?: {
+      preference?: "video" | "playlist"
+      kind?: "youtube" | "webpage"
+    },
   ) => Promise<KnowledgeSource>
 }
 
@@ -169,7 +172,10 @@ export function UploadDialog({
     setError(null)
 
     try {
-      await onAddLink(url.trim(), preference)
+      await onAddLink(url.trim(), {
+        preference,
+        kind: type === "webpage" ? "webpage" : "youtube",
+      })
       reset()
       onOpenChange(false)
     } catch (failure) {
@@ -246,7 +252,11 @@ export function UploadDialog({
                 autoFocus
                 type="url"
                 inputMode="url"
-                placeholder="https://www.youtube.com/watch?v=..."
+                placeholder={
+                  type === "webpage"
+                    ? "https://example.com/docs/getting-started"
+                    : "https://www.youtube.com/watch?v=..."
+                }
                 value={url}
                 disabled={isSubmitting}
                 onChange={(event) => {
@@ -255,8 +265,9 @@ export function UploadDialog({
                 }}
               />
               <p className="mt-3 text-xs text-muted-foreground">
-                Videos, Shorts, past live streams and playlists are all
-                supported. Videos without captions cannot be indexed.
+                {type === "webpage"
+                  ? "Public http(s) pages only. Private network and localhost URLs are blocked."
+                  : "Videos, Shorts, past live streams and playlists are all supported. Videos without captions cannot be indexed."}
               </p>
 
               {error ? (
@@ -324,10 +335,16 @@ export function UploadDialog({
                 </div>
               </div>
 
-              {type !== "pdf" ? (
+              {type !== "pdf" && type !== "image" ? (
                 <p className="mt-3 text-xs text-muted-foreground">
                   This file is converted to PDF before indexing, so answers can
                   cite exact pages.
+                </p>
+              ) : null}
+              {type === "image" ? (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Text and diagrams are transcribed with vision, then indexed
+                  like a document so answers can cite pages.
                 </p>
               ) : null}
 

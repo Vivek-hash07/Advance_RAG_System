@@ -46,12 +46,26 @@ export const ragConfig = {
       "gpt-4o-mini",
       openAiBaseURL,
     ),
+    /** Vision / OCR for image uploads. */
+    visionModel: resolveModel(
+      process.env.VISION_MODEL || process.env.CHAT_MODEL,
+      "gpt-4o-mini",
+      openAiBaseURL,
+    ),
   },
   pageIndex: {
     apiKey: process.env.PAGEINDEX_API_KEY,
   },
   ingest: {
     maxFileBytes: Number(process.env.MAX_UPLOAD_BYTES) || 25 * 1024 * 1024,
+  },
+  webpage: {
+    /** Hard cap on how long Scrapling may spend on one page. */
+    fetchTimeoutMs: Number(process.env.WEBPAGE_FETCH_TIMEOUT_MS) || 45_000,
+    /** Reject pages whose extracted text exceeds this size. */
+    maxTextChars: Number(process.env.WEBPAGE_MAX_TEXT_CHARS) || 400_000,
+    /** Use Scrapling StealthyFetcher (browser) instead of HTTP Fetcher. */
+    stealth: process.env.WEBPAGE_STEALTH === "1",
   },
   youtube: {
     apiKey: process.env.YOUTUBE_API_KEY,

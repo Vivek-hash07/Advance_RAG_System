@@ -229,9 +229,11 @@ function buildSourceUrl(
   node: RetrievedNode,
   timestamp: string | null,
 ): string | null {
-  if (!node.videoId) return null;
+  if (node.videoId) {
+    return videoUrl(node.videoId, timestamp ? toSeconds(timestamp) : null);
+  }
 
-  return videoUrl(node.videoId, timestamp ? toSeconds(timestamp) : null);
+  return node.sourceUrl ?? null;
 }
 
 export interface GeneratedAnswer {

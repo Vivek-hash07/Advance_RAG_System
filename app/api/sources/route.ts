@@ -8,6 +8,7 @@ import {
   AmbiguousYoutubeUrlError,
   IngestError,
   ingestUpload,
+  ingestWebpageUrl,
   ingestYoutubeUrl,
   listUserDocuments,
 } from "@/src/rag/documents/service";
@@ -16,7 +17,24 @@ const linkSchema = z.object({
   url: z.string().trim().min(1, "Paste a link to add."),
   /** Resolves a `watch?v=X&list=Y` link the user has already been asked about. */
   preference: z.enum(["video", "playlist"]).optional(),
+  /** Explicit link kind from the upload dialog. */
+  kind: z.enum(["youtube", "webpage"]).optional(),
 });
+
+function looksLikeYoutube(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    return (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "music.youtube.com" ||
+      host === "youtu.be" ||
+      host.endsWith(".youtube.com")
+    );
+  } catch {
+    return false;
+  }
+}
 
 /** List the signed-in user's sources, advancing any still being processed. */
 export async function GET() {
@@ -33,9 +51,9 @@ export async function GET() {
 /**
  * Add a source.
  *
- * Multipart bodies are file uploads; JSON bodies carry a YouTube link. Both
- * return immediately with a row the UI can render, and hand the slow indexing
- * work to an Inngest run.
+ * Multipart bodies are file uploads; JSON bodies carry a YouTube or webpage
+ * link. Both return immediately with a row the UI can render, and hand the slow
+ * indexing work to an Inngest run.
  */
 export async function POST(request: Request) {
   try {
@@ -71,12 +89,17 @@ async function addLink(userId: string, request: Request) {
     );
   }
 
+  const { url, preference, kind } = parsed.data;
+  const asWebpage =
+    kind === "webpage" || (kind !== "youtube" && !looksLikeYoutube(url));
+
+  if (asWebpage) {
+    const document = await ingestWebpageUrl(userId, url);
+    return NextResponse.json({ document: toPublicSource(document) }, { status: 202 });
+  }
+
   try {
-    const document = await ingestYoutubeUrl(
-      userId,
-      parsed.data.url,
-      parsed.data.preference,
-    );
+    const document = await ingestYoutubeUrl(userId, url, preference);
 
     return NextResponse.json({ document: toPublicSource(document) }, { status: 202 });
   } catch (error) {

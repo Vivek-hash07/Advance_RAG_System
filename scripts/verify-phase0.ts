@@ -10,7 +10,7 @@
 import { prisma } from "../src/lib/db.ts";
 
 const APP_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
-const EXPECTED_FUNCTIONS = 5;
+const EXPECTED_FUNCTIONS = 6;
 
 type Check = { name: string; ok: boolean; detail: string };
 

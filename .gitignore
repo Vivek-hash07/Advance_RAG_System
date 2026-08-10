@@ -46,3 +46,9 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Scrapling local venv (Python webpage scraper)
+/scripts/scrapling/.venv/
+__pycache__/
+*.pyc
+

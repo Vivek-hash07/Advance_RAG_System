@@ -52,6 +52,14 @@ function describeSize(record: DocumentRecord): string | null {
     return "Transcript indexed";
   }
 
+  if (record.sourceKind === "webpage") {
+    return record.sourceUrl ? "Webpage indexed" : "Indexed";
+  }
+
+  if (record.sourceKind === "image") {
+    return "Image transcribed";
+  }
+
   if (record.pageCount === null) return null;
   return `${record.pageCount} ${record.pageCount === 1 ? "page" : "pages"}`;
 }
