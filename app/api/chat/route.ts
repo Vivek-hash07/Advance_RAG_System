@@ -5,6 +5,9 @@ import { requireUserId } from "@/src/lib/session";
 import { createSseStream } from "@/src/lib/sse";
 import { askQuestion } from "@/src/rag/ask";
 
+/** A question can embed a few playlist videos that have not been indexed yet. */
+export const maxDuration = 300;
+
 const askSchema = z.object({
   question: z.string().trim().min(1, "Question must not be empty"),
   documentIds: z.array(z.string()).optional(),

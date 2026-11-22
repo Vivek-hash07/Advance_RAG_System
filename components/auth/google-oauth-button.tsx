@@ -46,7 +46,7 @@ export function GoogleOAuthButton({
     <Button
       type="button"
       className={cn(
-        "border-transparent bg-neutral-950 text-white hover:bg-neutral-900",
+        "border-border bg-foreground text-background hover:bg-[color-mix(in_oklch,var(--foreground),var(--background)_14%)]",
         className
       )}
       disabled={isLoading}

@@ -1,4 +1,4 @@
-/** Formats the vectorless ingest pipeline can process today. */
+/** Formats the ingest pipeline can process today. */
 export type SourceKind =
   | "pdf"
   | "doc"

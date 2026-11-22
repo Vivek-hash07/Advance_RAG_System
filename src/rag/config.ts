@@ -1,5 +1,23 @@
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
+function resolveQdrantUrl(raw: string | undefined): string {
+  const value = raw?.trim();
+  if (!value) return "";
+
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+
+  try {
+    const url = new URL(withProtocol);
+    if (!url.port) url.port = "6333";
+    url.pathname = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return value;
+  }
+}
+
 function resolveOpenAiBaseUrl(apiKey: string | undefined): string | undefined {
   const configured = process.env.OPENAI_BASE_URL?.trim();
   if (configured) return configured;
@@ -10,6 +28,15 @@ function resolveOpenAiBaseUrl(apiKey: string | undefined): string | undefined {
 
 function isOpenRouter(baseURL: string | undefined): boolean {
   return Boolean(baseURL?.includes("openrouter.ai"));
+}
+
+function resolveChunkModel(baseURL: string | undefined): string {
+  const configured = process.env.CHUNK_MODEL?.trim();
+  if (configured) {
+    return resolveModel(configured, configured, baseURL);
+  }
+  if (isOpenRouter(baseURL)) return "liquid/lfm-3-1.7b:free";
+  return resolveModel(undefined, "gpt-4o-mini", baseURL);
 }
 
 /**
@@ -52,9 +79,44 @@ export const ragConfig = {
       "gpt-4o-mini",
       openAiBaseURL,
     ),
+    embeddingModel: resolveModel(
+      process.env.EMBEDDING_MODEL,
+      "text-embedding-3-small",
+      openAiBaseURL,
+    ),
+    /**
+     * Small model that decides topical chunk boundaries. On OpenRouter this is
+     * a free 1.7B model; a direct OpenAI key uses the chat model instead.
+     */
+    chunkModel: resolveChunkModel(openAiBaseURL),
   },
-  pageIndex: {
-    apiKey: process.env.PAGEINDEX_API_KEY,
+  qdrant: {
+    /**
+     * Cloud cluster URL. Port 6333 is added when the endpoint has none, which
+     * is how Qdrant Cloud serves the REST API.
+     */
+    url: resolveQdrantUrl(
+      process.env.CLUSTER_ENDPOINT || process.env.QDRANT_URL,
+    ),
+    apiKey:
+      process.env.QUDRANT_API_KEY?.trim() ||
+      process.env.QDRANT_API_KEY?.trim() ||
+      "",
+    collection: process.env.QDRANT_COLLECTION?.trim() || "rag_chunks",
+    memoryCollection:
+      process.env.QDRANT_MEMORY_COLLECTION?.trim() || "user_memories",
+  },
+  vector: {
+    dimensions: Number(process.env.EMBEDDING_DIMENSIONS) || 1536,
+    chunkSize: Number(process.env.CHUNK_SIZE) || 1200,
+    chunkOverlap: Number(process.env.CHUNK_OVERLAP) || 200,
+    /** Turn off with AGENTIC_CHUNKING=0 to use only the character splitter. */
+    agentic: process.env.AGENTIC_CHUNKING !== "0",
+    /** Source characters sent to the chunk model in one call. */
+    agenticWindowChars: Number(process.env.AGENTIC_WINDOW_CHARS) || 4800,
+    /** Hits taken from Qdrant for each query variant before fusion. */
+    candidatesPerQuery: Number(process.env.RETRIEVAL_CANDIDATES) || 8,
+    maxIndexChars: Number(process.env.MAX_INDEX_CHARS) || 500_000,
   },
   ingest: {
     maxFileBytes: Number(process.env.MAX_UPLOAD_BYTES) || 25 * 1024 * 1024,
@@ -75,12 +137,9 @@ export const ragConfig = {
      */
     maxPlaylistVideos: Number(process.env.YOUTUBE_MAX_PLAYLIST_VIDEOS) || 200,
     /**
-     * Playlists at or below this size get every transcript built at ingest time.
-     * Larger ones only index metadata upfront and build transcripts on demand,
-     * so nobody pays to transcribe videos that are never asked about.
+     * Cap used by playlist video routing. The ask path searches every chunked
+     * video in the sources chosen for the question.
      */
-    eagerBuildMaxVideos: Number(process.env.YOUTUBE_EAGER_BUILD_MAX) || 20,
-    /** Videos a single playlist may contribute to one question, after routing. */
     videosPerQuery: Number(process.env.YOUTUBE_VIDEOS_PER_QUERY) || 3,
     /** How long a cached playlist listing is trusted before re-fetching it. */
     playlistRefreshMs:
@@ -115,11 +174,14 @@ export function requireOpenAiKey(): string {
   return ragConfig.openai.apiKey;
 }
 
-export function requirePageIndexKey(): string {
-  if (!ragConfig.pageIndex.apiKey) {
-    throw new Error("PAGEINDEX_API_KEY is not set");
+export function requireQdrant(): { url: string; apiKey: string } {
+  if (!ragConfig.qdrant.url) {
+    throw new Error("CLUSTER_ENDPOINT is not set");
   }
-  return ragConfig.pageIndex.apiKey;
+  if (!ragConfig.qdrant.apiKey) {
+    throw new Error("QUDRANT_API_KEY is not set");
+  }
+  return { url: ragConfig.qdrant.url, apiKey: ragConfig.qdrant.apiKey };
 }
 
 export function requireYoutubeKey(): string {

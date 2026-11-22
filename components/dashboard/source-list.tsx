@@ -95,7 +95,7 @@ function PlaylistHonesty({ source }: { source: KnowledgeSource }) {
                     {video.title}
                   </span>
                   {video.errorMessage ? (
-                    <span className="block text-destructive">
+                    <span className="block min-w-0 break-all text-destructive">
                       {video.errorMessage}
                     </span>
                   ) : null}
@@ -133,7 +133,7 @@ function SourceRow({
   }
 
   return (
-    <li className="group flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2.5">
+    <li className="group/source flex min-w-0 items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2.5 transition-colors hover:border-border hover:bg-muted">
       <input
         type="checkbox"
         className="mt-2 size-3.5 shrink-0 accent-foreground"
@@ -167,9 +167,9 @@ function SourceRow({
           <span>{formatRelativeTime(source.createdAt)}</span>
         </span>
         {source.status === "failed" && source.errorMessage ? (
-          <span className="mt-1 flex items-start gap-1 text-xs text-destructive">
+          <span className="mt-1 flex min-w-0 items-start gap-1 text-xs text-destructive">
             <AlertCircleIcon className="mt-0.5 size-3 shrink-0" />
-            {source.errorMessage}
+            <span className="min-w-0 break-all">{source.errorMessage}</span>
           </span>
         ) : null}
         {source.sourceKind === "playlist" ? (
@@ -191,7 +191,7 @@ function SourceRow({
           aria-label={`Remove ${source.name}`}
           disabled={isRemoving}
           onClick={handleRemove}
-          className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          className="text-muted-foreground opacity-0 transition-opacity group-hover/source:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100"
         >
           {isRemoving ? (
             <Loader2Icon className="animate-spin" />
@@ -235,7 +235,7 @@ export function SourceList({
             : `Asking across ${selectedReady} of ${readyCount} ready sources`}
         </p>
       ) : null}
-      <ul className="grid gap-1.5">
+      <ul className="grid min-w-0 gap-1.5">
         {sources.map((source) => (
           <SourceRow
             key={source.id}

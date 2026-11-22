@@ -1,6 +1,5 @@
 import { getOpenAiClient } from "@/src/lib/openai";
 import { ragConfig } from "@/src/rag/config";
-import type { FlatTreeNode } from "@/src/rag/types";
 
 const SYSTEM_PROMPT =
   "You write one-line summaries of video transcripts for a search index. " +
@@ -19,18 +18,10 @@ const SYSTEM_PROMPT =
  */
 export async function summarizeVideo(
   title: string,
-  nodes: FlatTreeNode[],
+  outline: string,
 ): Promise<string | null> {
-  const outline = nodes
-    .filter((node) => node.depth <= 2)
-    .slice(0, 40)
-    .map((node) => {
-      const gist = (node.summary ?? node.text).replace(/\s+/g, " ").slice(0, 160);
-      return `- ${node.title}${gist ? `: ${gist}` : ""}`;
-    })
-    .join("\n");
-
-  if (!outline) return null;
+  const text = outline.trim();
+  if (!text) return null;
 
   try {
     const completion = await getOpenAiClient().chat.completions.create({
@@ -39,7 +30,10 @@ export async function summarizeVideo(
       max_tokens: 90,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Video title: ${title}\n\nOutline:\n${outline}` },
+        {
+          role: "user",
+          content: `Video title: ${title}\n\nOutline:\n${text.slice(0, 4000)}`,
+        },
       ],
     });
 

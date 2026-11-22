@@ -115,7 +115,7 @@ export function DashboardSidebar({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4">
+      <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4">
         <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Chats
@@ -155,7 +155,7 @@ export function DashboardSidebar({
                     "min-w-0 flex-1 truncate rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
                     activeConversationId === conversation.id
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "hover:bg-sidebar-accent/60",
+                      : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   )}
                 >
                   {conversation.title}

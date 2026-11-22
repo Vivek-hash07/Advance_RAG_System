@@ -1,4 +1,4 @@
-import type { Prisma } from "@/src/generated/prisma/client";
+import { Prisma } from "@/src/generated/prisma/client";
 import { prisma } from "@/src/lib/db";
 import type { FlatTreeNode, IngestStatus, SourceKind } from "@/src/rag/types";
 import {
@@ -24,6 +24,7 @@ export interface DocumentRecord {
   status: IngestStatus;
   errorMessage: string | null;
   pageCount: number | null;
+  chunkCount: number;
   hasTree: boolean;
   youtubeVideoId: string | null;
   youtubePlaylistId: string | null;
@@ -40,6 +41,7 @@ type DocumentRow = {
   status: string;
   errorMessage: string | null;
   pageCount: number | null;
+  chunkCount: number;
   tree: Prisma.JsonValue | null;
   youtubeVideoId: string | null;
   youtubePlaylistId: string | null;
@@ -59,6 +61,7 @@ const SELECT = {
   status: true,
   errorMessage: true,
   pageCount: true,
+  chunkCount: true,
   tree: true,
   youtubeVideoId: true,
   youtubePlaylistId: true,
@@ -84,7 +87,8 @@ function toRecord(
     status: row.status as IngestStatus,
     errorMessage: row.errorMessage,
     pageCount: row.pageCount,
-    hasTree: row.tree !== null,
+    chunkCount: row.chunkCount,
+    hasTree: row.chunkCount > 0 || row.tree !== null,
     youtubeVideoId: row.youtubeVideoId,
     youtubePlaylistId: row.youtubePlaylistId,
     playlistHonesty,
@@ -120,6 +124,7 @@ export async function createDocument(input: {
   sourceUrl?: string | null;
   youtubeVideoId?: string | null;
   youtubePlaylistId?: string | null;
+  contentText?: string | null;
   status?: IngestStatus;
 }): Promise<DocumentRecord> {
   const { status = "processing", ...rest } = input;
@@ -191,23 +196,26 @@ export async function findDocument(
   return record;
 }
 
-/** An uploaded file, searched directly through its own cached tree. */
+/** An uploaded file or webpage, searched through its Qdrant chunks. */
 export interface FileSource {
   type: "file";
   documentId: string;
   name: string;
   sourceKind: SourceKind;
   sourceUrl: string | null;
-  nodes: FlatTreeNode[];
+  chunkCount: number;
+  /** Legacy tree, present only until those nodes have been embedded. */
+  backfillNodes: FlatTreeNode[];
 }
 
-/** A single YouTube video, whose tree lives on the shared video record. */
+/** A single YouTube video, whose chunks live on the shared video record. */
 export interface VideoSource {
   type: "video";
   documentId: string;
   name: string;
   videoId: string;
-  nodes: FlatTreeNode[];
+  chunkCount: number;
+  backfillNodes: FlatTreeNode[];
 }
 
 /**
@@ -230,9 +238,9 @@ function toNodes(tree: Prisma.JsonValue | null): FlatTreeNode[] {
 /**
  * Everything the user can be asked questions about, newest first.
  *
- * Files and single videos arrive with their trees already loaded; playlists
- * arrive as a pointer, because which of their videos to read is a decision the
- * retrieval stage makes per question.
+ * Files, webpages and single videos are searchable once they are ready.
+ * Playlists arrive as a pointer, because which of their videos to read is a
+ * decision the retrieval stage makes per question.
  */
 export async function findRetrievableSources(
   userId: string,
@@ -250,9 +258,15 @@ export async function findRetrievableSources(
       name: true,
       sourceKind: true,
       sourceUrl: true,
+      chunkCount: true,
       tree: true,
       youtubeVideo: {
-        select: { videoId: true, tree: true, transcriptStatus: true },
+        select: {
+          videoId: true,
+          tree: true,
+          transcriptStatus: true,
+          chunkCount: true,
+        },
       },
       youtubePlaylist: { select: { playlistId: true } },
     },
@@ -272,31 +286,29 @@ export async function findRetrievableSources(
     }
 
     if (row.youtubeVideo) {
-      const nodes = toNodes(row.youtubeVideo.tree);
+      if (row.youtubeVideo.transcriptStatus !== "ready") continue;
 
-      if (row.youtubeVideo.transcriptStatus === "ready" && nodes.length > 0) {
-        sources.push({
-          type: "video",
-          documentId: row.id,
-          name: row.name,
-          videoId: row.youtubeVideo.videoId,
-          nodes,
-        });
-      }
+      const chunkCount = row.youtubeVideo.chunkCount;
+      sources.push({
+        type: "video",
+        documentId: row.id,
+        name: row.name,
+        videoId: row.youtubeVideo.videoId,
+        chunkCount,
+        backfillNodes: chunkCount > 0 ? [] : toNodes(row.youtubeVideo.tree),
+      });
       continue;
     }
 
-    const nodes = toNodes(row.tree);
-    if (nodes.length > 0) {
-      sources.push({
-        type: "file",
-        documentId: row.id,
-        name: row.name,
-        sourceKind: row.sourceKind as SourceKind,
-        sourceUrl: row.sourceUrl,
-        nodes,
-      });
-    }
+    sources.push({
+      type: "file",
+      documentId: row.id,
+      name: row.name,
+      sourceKind: row.sourceKind as SourceKind,
+      sourceUrl: row.sourceUrl,
+      chunkCount: row.chunkCount,
+      backfillNodes: row.chunkCount > 0 ? [] : toNodes(row.tree),
+    });
   }
 
   return sources;
@@ -308,7 +320,9 @@ export async function updateDocumentStatus(
     status: IngestStatus;
     errorMessage?: string | null;
     pageCount?: number | null;
+    chunkCount?: number;
     nodes?: FlatTreeNode[];
+    clearTree?: boolean;
     name?: string;
     pageIndexDocId?: string | null;
     sourceUrl?: string | null;
@@ -321,11 +335,13 @@ export async function updateDocumentStatus(
       errorMessage: data.errorMessage ?? null,
       ...(data.name === undefined ? {} : { name: data.name }),
       ...(data.pageCount === undefined ? {} : { pageCount: data.pageCount }),
+      ...(data.chunkCount === undefined ? {} : { chunkCount: data.chunkCount }),
       ...(data.pageIndexDocId === undefined
         ? {}
         : { pageIndexDocId: data.pageIndexDocId }),
       ...(data.sourceUrl === undefined ? {} : { sourceUrl: data.sourceUrl }),
-      ...(data.nodes === undefined
+      ...(data.clearTree ? { tree: Prisma.DbNull } : {}),
+      ...(data.nodes === undefined || data.clearTree
         ? {}
         : { tree: data.nodes as unknown as Prisma.InputJsonValue }),
     },
@@ -347,6 +363,37 @@ export async function findDocumentById(
   if (!row) return null;
   const [record] = await withPlaylistHonesty([row]);
   return record;
+}
+
+export async function getDocumentContent(documentId: string): Promise<{
+  id: string;
+  userId: string;
+  name: string;
+  sourceKind: SourceKind;
+  sourceUrl: string | null;
+  contentText: string | null;
+  chunkCount: number;
+} | null> {
+  return prisma.document.findUnique({
+    where: { id: documentId },
+    select: {
+      id: true,
+      userId: true,
+      name: true,
+      sourceKind: true,
+      sourceUrl: true,
+      contentText: true,
+      chunkCount: true,
+    },
+  }) as Promise<{
+    id: string;
+    userId: string;
+    name: string;
+    sourceKind: SourceKind;
+    sourceUrl: string | null;
+    contentText: string | null;
+    chunkCount: number;
+  } | null>;
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {

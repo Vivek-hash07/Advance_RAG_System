@@ -8,10 +8,8 @@ const SYSTEM_PROMPT =
 
 /**
  * HyDE (Hypothetical Document Embeddings): draft a plausible answer passage and
- * use it as a retrieval probe. In a vectorless pipeline there is no embedding
- * step, but the hypothetical passage still helps — it supplies the vocabulary
- * and phrasing an answering section would actually use, which makes the
- * tree-node selector far better at spotting the right sections.
+ * use it as a retrieval probe. The passage is embedded alongside the question
+ * so Qdrant can match the wording an answering chunk would actually use.
  */
 export async function hydeDocument(query: string): Promise<string> {
   const openai = getOpenAiClient();

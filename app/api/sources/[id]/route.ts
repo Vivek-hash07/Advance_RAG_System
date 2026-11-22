@@ -13,7 +13,7 @@ interface SourceRouteContext {
   params: Promise<{ id: string }>;
 }
 
-/** Poll a source's ingest status; caches its tree once PageIndex finishes. */
+/** Poll a source's ingest status. Embedding finishes in the background. */
 export async function GET(
   _request: Request,
   context: SourceRouteContext,

@@ -94,7 +94,7 @@ export function SourcePanelContent({
         <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Retrieved excerpt
         </p>
-        <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap text-black">
+        <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
           <Excerpt citation={citation} />
         </div>
       </div>

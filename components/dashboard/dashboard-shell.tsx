@@ -173,7 +173,7 @@ export function DashboardShell({ initialSources }: DashboardShellProps) {
             : "lg:grid-cols-[17rem_minmax(0,1fr)]",
         )}
       >
-        <div className="hidden min-h-0 lg:block">{sidebar}</div>
+        <div className="hidden min-h-0 min-w-0 overflow-hidden lg:block">{sidebar}</div>
 
         <div className="min-h-0 min-w-0">
           <ChatPanel
@@ -202,7 +202,7 @@ export function DashboardShell({ initialSources }: DashboardShellProps) {
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="max-w-[18rem] p-0"
+          className="max-w-[18rem] overflow-hidden p-0"
         >
           {sidebar}
         </SheetContent>

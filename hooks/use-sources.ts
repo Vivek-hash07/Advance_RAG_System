@@ -20,7 +20,7 @@ function isPending(source: KnowledgeSource): boolean {
 /**
  * Owns the user's knowledge sources. The initial list is rendered on the server
  * and passed in, so this hook only handles mutations and polling of sources
- * PageIndex is still processing.
+ * that are still being embedded.
  */
 export function useSources(initialSources: KnowledgeSource[]) {
   const [sources, setSources] = useState(initialSources)

@@ -136,7 +136,7 @@ export async function routeToVideos(
   queries: OptimizedQuery,
 ): Promise<RoutedVideo[]> {
   // Videos that cannot be read are dropped before the model sees them. A video
-  // with no captions, or one PageIndex rejected, will never yield a section, so
+  // with no captions will never yield a section, so
   // leaving it in the running would let it consume the per-question budget on
   // every question and starve videos that could actually answer.
   const candidates = entries.filter(

@@ -6,6 +6,14 @@ import {
   fetchVideos,
 } from "@/src/rag/youtube/data-api";
 import * as youtube from "@/src/rag/youtube/repository";
+import {
+  captionPauseRemainingMs,
+  captionsPaused,
+} from "@/src/rag/youtube/transcript";
+import {
+  ensureVideoIndexed,
+  isVideoIndexed,
+} from "@/src/rag/youtube/video-ingest";
 
 export class PlaylistIngestError extends Error {
   constructor(message: string) {
@@ -22,23 +30,14 @@ export interface PlaylistSyncResult {
   videoIds: string[];
   truncated: boolean;
   unavailableCount: number;
-  /** True when the playlist is small enough to transcribe in full upfront. */
-  buildEagerly: boolean;
-}
-
-/** Small playlists are processed in full; large ones wait to be asked about. */
-export function shouldBuildEagerly(videoCount: number): boolean {
-  return videoCount <= ragConfig.youtube.eagerBuildMaxVideos;
 }
 
 /**
  * Build the playlist-level index: the playlist's own details plus one metadata
  * row per video, in curation order.
  *
- * This is the cheap half of playlist ingest — roughly one quota unit per 50
- * videos for the listing and another per 50 for the metadata — and it is all
- * that routing needs. Transcripts are built separately, and for large playlists
- * only for videos someone actually asks about.
+ * Transcripts for every listed video are embedded after this returns. The
+ * listing itself is what a question about the author or the series order uses.
  */
 export async function syncPlaylist(
   playlistId: string,
@@ -111,8 +110,83 @@ export async function syncPlaylist(
     videoIds: ingestable,
     truncated: listing.truncated,
     unavailableCount,
-    buildEagerly: shouldBuildEagerly(ingestable.length),
   };
+}
+
+async function mapPool<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<unknown>,
+): Promise<void> {
+  let cursor = 0;
+
+  async function next(): Promise<void> {
+    const index = cursor;
+    cursor += 1;
+    if (index >= items.length) return;
+    await worker(items[index]);
+    await next();
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => next()),
+  );
+}
+
+const playlistJobs = new Map<string, Promise<void>>();
+const resumeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** True when this process is already embedding the playlist. */
+export function playlistIndexRunning(playlistId: string): boolean {
+  return playlistJobs.has(playlistId);
+}
+
+/** Try the rate-limited videos again once YouTube's quiet period has elapsed. */
+export function scheduleCaptionRetry(playlistId: string): void {
+  if (resumeTimers.has(playlistId) || playlistJobs.has(playlistId)) return;
+
+  const wait = Math.max(1_000, captionPauseRemainingMs() + 2_000);
+  const timer = setTimeout(() => {
+    resumeTimers.delete(playlistId);
+    void indexPlaylistInBackground(playlistId);
+  }, wait);
+  resumeTimers.set(playlistId, timer);
+}
+
+/**
+ * Chunk every video in the playlist that does not have vectors yet.
+ *
+ * Repeated calls for the same playlist share one run. Per-video failures stay
+ * on the video row and do not stop the rest of the playlist.
+ */
+export function indexPlaylistInBackground(playlistId: string): Promise<void> {
+  const current = playlistJobs.get(playlistId);
+  if (current) return current;
+  if (captionsPaused()) return Promise.resolve();
+
+  const run = (async () => {
+    const ids = await youtube.findUnbuiltPlaylistVideos(playlistId);
+    if (ids.length === 0) return;
+    await indexPlaylistTranscripts(ids);
+  })().finally(() => {
+    if (playlistJobs.get(playlistId) === run) {
+      playlistJobs.delete(playlistId);
+    }
+  });
+
+  playlistJobs.set(playlistId, run);
+  return run;
+}
+
+/** Embed transcripts for videos that are not indexed yet. Failures stay on the video row. */
+export async function indexPlaylistTranscripts(videoIds: string[]): Promise<void> {
+  const pending: string[] = [];
+
+  for (const videoId of videoIds) {
+    if (!(await isVideoIndexed(videoId))) pending.push(videoId);
+  }
+
+  await mapPool(pending, 1, (videoId) => ensureVideoIndexed(videoId));
 }
 
 /**

@@ -1,27 +1,35 @@
-import { inngest } from "@/src/inngest/client";
-import {
-  documentSubmitted,
-  playlistRequested,
-  videoRequested,
-  webpageRequested,
-} from "@/src/inngest/events";
 import { ragConfig } from "@/src/rag/config";
 import * as repository from "@/src/rag/documents/repository";
 import type { DocumentRecord } from "@/src/rag/documents/repository";
-import { normalizeUpload } from "@/src/rag/ingest/normalize";
+import { extractUploadText } from "@/src/rag/ingest/normalize";
 import { detectSourceKind, ACCEPTED_EXTENSIONS } from "@/src/rag/ingest/source-kind";
 import { assertSafePublicUrl, SsrfError } from "@/src/rag/ingest/ssrf";
-import {
-  deletePageIndexDocument,
-  fetchTree,
-  submitPdf,
-  type TreeState,
-} from "@/src/rag/pageindex/documents";
-import { flattenTree } from "@/src/rag/pageindex/tree";
 import { fetchPlaylist, fetchVideo } from "@/src/rag/youtube/data-api";
 import * as youtube from "@/src/rag/youtube/repository";
+import {
+  indexPlaylistInBackground,
+  playlistIndexRunning,
+  PlaylistIngestError,
+  scheduleCaptionRetry,
+  syncPlaylist,
+} from "@/src/rag/youtube/playlist-ingest";
+import {
+  CAPTION_RATE_LIMIT_MESSAGE,
+  captionsPaused,
+} from "@/src/rag/youtube/transcript";
 import { playlistUrl, resolveYoutubeUrl, videoUrl } from "@/src/rag/youtube/url";
+import {
+  ensureVideoIndexed,
+  VideoIngestError,
+} from "@/src/rag/youtube/video-ingest";
+import { indexDocumentText } from "@/src/rag/vector/index-source";
+import { scrapeWebpage } from "@/src/rag/ingest/webpage";
 import type { IngestStatus } from "@/src/rag/types";
+import {
+  deleteDocumentChunks,
+  deleteVideoChunks,
+} from "@/src/rag/vector/qdrant";
+import { describePublicError } from "@/src/lib/public-error";
 
 export class IngestError extends Error {
   constructor(
@@ -53,12 +61,8 @@ export class AmbiguousYoutubeUrlError extends Error {
 }
 
 /**
- * Ingest an uploaded file: validate it, convert it to PDF if needed, hand it to
- * PageIndex for tree generation, and record it against the user.
- *
- * Returns as soon as PageIndex accepts the document. Tree generation takes
- * minutes, so an Inngest run takes over from here and the caller gets a row it
- * can show immediately.
+ * Ingest an uploaded file: validate it, extract its text, and embed it before
+ * returning. The source is ready when this resolves.
  */
 export async function ingestUpload(
   userId: string,
@@ -82,40 +86,53 @@ export async function ingestUpload(
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  let normalized;
+  let text: string;
   try {
-    normalized = await normalizeUpload(sourceKind, buffer, file.name);
+    text = await extractUploadText(sourceKind, buffer, file.name);
   } catch (error) {
     throw new IngestError(
       error instanceof Error ? error.message : "Failed to read the uploaded file.",
     );
   }
 
-  const pageIndexDocId = await submitPdf(normalized.pdf, normalized.pdfFileName);
-
   const document = await repository.createDocument({
     userId,
     name: file.name,
     sourceKind,
-    pageIndexDocId,
+    contentText: text,
+    status: "processing",
   });
 
-  await inngest.send(
-    documentSubmitted.create({
+  try {
+    const indexed = await indexDocumentText({
+      userId,
       documentId: document.id,
-      name: document.name,
+      documentName: document.name,
       sourceKind,
-    }),
-  );
+      sourceUrl: null,
+      text,
+    });
 
-  return document;
+    return repository.updateDocumentStatus(document.id, {
+      status: "ready",
+      errorMessage: null,
+      pageCount: indexed.pageCount,
+      chunkCount: indexed.chunkCount,
+    });
+  } catch (error) {
+    const message = describePublicError(error, "Failed to embed this document.");
+    await repository.updateDocumentStatus(document.id, {
+      status: "failed",
+      errorMessage: message,
+    });
+    throw new IngestError(message);
+  }
 }
 
 /**
- * Queue a webpage for Scrapling scrape → PDF → PageIndex.
+ * Scrape a public webpage and embed it before returning.
  *
- * SSRF checks run before the row is created so bad URLs never enter the queue.
- * The slow fetch happens in Inngest; the caller gets a queued row immediately.
+ * SSRF checks run before the row is created so bad URLs never enter the library.
  */
 export async function ingestWebpageUrl(
   userId: string,
@@ -151,30 +168,45 @@ export async function ingestWebpageUrl(
 
   if (existing?.status === "failed") {
     await repository.updateDocumentStatus(existing.id, {
-      status: "queued",
+      status: "processing",
       errorMessage: null,
     });
   }
 
-  await inngest.send(
-    webpageRequested.create({
+  try {
+    const { scraped } = await scrapeWebpage(safeUrl.href);
+    const indexed = await indexDocumentText({
+      userId,
       documentId: document.id,
-      url: safeUrl.href,
-    }),
-  );
+      documentName: scraped.title,
+      sourceKind: "webpage",
+      sourceUrl: scraped.finalUrl,
+      text: `# ${scraped.title}\n\nSource: ${scraped.finalUrl}\n\n${scraped.text}`,
+    });
 
-  return repository.findDocument(userId, document.id).then(
-    (row) => row ?? document,
-  );
+    return repository.updateDocumentStatus(document.id, {
+      status: "ready",
+      name: scraped.title,
+      sourceUrl: scraped.finalUrl,
+      errorMessage: null,
+      chunkCount: indexed.chunkCount,
+      pageCount: indexed.pageCount,
+    });
+  } catch (error) {
+    const message = describePublicError(error, "Webpage scrape failed.");
+    await repository.updateDocumentStatus(document.id, {
+      status: "failed",
+      errorMessage: message,
+    });
+    throw new IngestError(message);
+  }
 }
 
 /**
  * Ingest a YouTube link.
  *
- * Metadata is fetched inline — it is one cheap quota unit and it means a bad
- * link fails immediately with a useful message instead of failing silently in a
- * background run. Everything expensive (transcripts, playlist listing, tree
- * generation) is handed to Inngest.
+ * Metadata, transcripts, and playlist listings are fetched in this request, so
+ * a bad link fails immediately and a good one is searchable when this returns.
  */
 export async function ingestYoutubeUrl(
   userId: string,
@@ -232,10 +264,8 @@ async function ingestYoutubeVideo(
     return existing;
   }
 
-  // Anything not yet ready is re-queued, so adding the link again is also how a
-  // user retries a source whose run failed or was interrupted. The updated row
-  // is what gets returned — the caller renders this, and the stale copy would
-  // leave a re-queued source showing as failed.
+  // Adding the link again retries a source that failed. Return the updated row
+  // so the sidebar does not keep showing the old failure.
   const document = existing
     ? await repository.updateDocumentStatus(existing.id, {
         status: "processing",
@@ -249,15 +279,28 @@ async function ingestYoutubeVideo(
         youtubeVideoId: video.id,
       });
 
-  await inngest.send(
-    videoRequested.create({
-      videoId,
-      documentId: document.id,
-      trigger: "source",
-    }),
-  );
+  try {
+    const indexed = await ensureVideoIndexed(videoId);
+    if (!indexed) {
+      const videoRecord = await youtube.findVideo(videoId);
+      throw new VideoIngestError(
+        videoRecord?.errorMessage ?? "Could not index this video.",
+      );
+    }
+  } catch (error) {
+    const message = describePublicError(error, "Could not index this video.");
+    await repository.updateDocumentStatus(document.id, {
+      status: "failed",
+      errorMessage: message,
+    });
+    throw new IngestError(message);
+  }
 
-  return document;
+  return repository.updateDocumentStatus(document.id, {
+    status: "ready",
+    errorMessage: null,
+    name: metadata.title,
+  });
 }
 
 async function ingestYoutubePlaylist(
@@ -299,91 +342,34 @@ async function ingestYoutubePlaylist(
         youtubePlaylistId: playlist.id,
       });
 
-  await inngest.send(
-    playlistRequested.create({ playlistId, documentId: document.id }),
-  );
-
-  return document;
-}
-
-/**
- * Advance an uploaded file's PageIndex job by one poll.
- *
- * Kept idempotent and side-effect-light so an Inngest step can call it
- * repeatedly, and so the status endpoint can call it as a fallback if a run is
- * lost.
- */
-export async function pollDocumentTree(
-  document: DocumentRecord,
-): Promise<DocumentRecord> {
-  if (!document.pageIndexDocId) {
-    return document;
-  }
-
-  if (document.status === "ready" && document.hasTree) {
-    return document;
-  }
-
-  if (document.status === "failed") {
-    return document;
-  }
-
-  let state: TreeState;
   try {
-    state = await fetchTree(document.pageIndexDocId);
+    const listing = await syncPlaylist(playlistId);
+    await indexPlaylistInBackground(playlistId);
+
+    return repository.updateDocumentStatus(document.id, {
+      status: "ready",
+      errorMessage: null,
+      pageCount: listing.videoIds.length,
+      name: listing.title,
+    });
   } catch (error) {
-    // Rate limits and transient network faults must not condemn the document.
-    // Leave it pending so the next poll retries.
-    console.warn(`[rag] Could not refresh document ${document.id}:`, error);
-    return document;
-  }
-
-  if (state.status === "failed") {
-    return repository.updateDocumentStatus(document.id, {
+    const message =
+      error instanceof PlaylistIngestError
+        ? error.message
+        : describePublicError(error, "Could not index this playlist.");
+    await repository.updateDocumentStatus(document.id, {
       status: "failed",
-      errorMessage: "PageIndex could not process this document.",
+      errorMessage: message,
     });
+    throw new IngestError(message);
   }
-
-  if (state.status !== "ready" || !state.tree) {
-    // PageIndex can report completion a moment before the tree is retrievable,
-    // so hold the document at "processing" until the tree actually arrives.
-    const status = state.status === "ready" ? "processing" : state.status;
-
-    return status === document.status
-      ? document
-      : repository.updateDocumentStatus(document.id, {
-          status,
-          errorMessage: null,
-        });
-  }
-
-  const nodes = flattenTree(state.tree);
-
-  if (nodes.length === 0) {
-    return repository.updateDocumentStatus(document.id, {
-      status: "failed",
-      errorMessage: "PageIndex returned an empty document structure.",
-    });
-  }
-
-  const pages = nodes
-    .map((node) => node.pageIndex)
-    .filter((page): page is number => page !== null);
-
-  return repository.updateDocumentStatus(document.id, {
-    status: "ready",
-    errorMessage: null,
-    pageCount: pages.length > 0 ? Math.max(...pages) : null,
-    nodes,
-  });
 }
 
 /**
  * Bring a source's status up to date.
  *
- * YouTube sources mirror the shared video or playlist records that the Inngest
- * runs write, so a lost or delayed run still surfaces correctly on refresh.
+ * File and webpage rows are finished before the upload returns. YouTube sources
+ * mirror the shared video or playlist records.
  */
 export async function syncDocument(
   document: DocumentRecord,
@@ -396,7 +382,7 @@ export async function syncDocument(
     return syncPlaylistDocument(document);
   }
 
-  return pollDocumentTree(document);
+  return document;
 }
 
 async function syncVideoDocument(
@@ -408,7 +394,7 @@ async function syncVideoDocument(
   if (!video) return document;
 
   const status: IngestStatus =
-    video.transcriptStatus === "ready" && video.hasTree
+    video.transcriptStatus === "ready"
       ? "ready"
       : video.transcriptStatus === "failed"
         ? "failed"
@@ -434,9 +420,36 @@ async function syncPlaylistDocument(
     document.youtubePlaylistId,
   );
 
-  // A playlist is answerable as soon as its video listing exists: routing reads
-  // titles and summaries, and any transcript it needs is built on demand.
-  const status: IngestStatus = summary.totalVideos > 0 ? "ready" : document.status;
+  // A 429 means stop calling YouTube. The playlist stays ready, the failed
+  // videos stay listed, and one retry is scheduled after the quiet period.
+  const playlist = await youtube.findPlaylistByRowId(document.youtubePlaylistId);
+  const running = playlist
+    ? playlistIndexRunning(playlist.playlistId)
+    : false;
+
+  if (playlist && captionsPaused()) {
+    await youtube.releaseProcessingVideos(
+      playlist.playlistId,
+      CAPTION_RATE_LIMIT_MESSAGE,
+    );
+    scheduleCaptionRetry(playlist.playlistId);
+  }
+
+  const unbuilt =
+    playlist && !captionsPaused() && !running
+      ? await youtube.findUnbuiltPlaylistVideos(playlist.playlistId)
+      : [];
+
+  if (unbuilt.length > 0 && playlist) {
+    void indexPlaylistInBackground(playlist.playlistId);
+  }
+
+  const status: IngestStatus =
+    summary.totalVideos === 0
+      ? document.status
+      : running || unbuilt.length > 0
+        ? "processing"
+        : "ready";
 
   if (status === document.status && document.pageCount === summary.totalVideos) {
     return document;
@@ -489,11 +502,14 @@ export async function removeUserDocument(
     return false;
   }
 
-  await repository.deleteDocument(document.id);
+  const ownedChunks =
+    document.sourceKind !== "youtube" && document.sourceKind !== "playlist";
 
-  if (document.pageIndexDocId) {
-    await deletePageIndexDocument(document.pageIndexDocId);
+  if (ownedChunks) {
+    await deleteDocumentChunks(document.id);
   }
+
+  await repository.deleteDocument(document.id);
 
   if (document.youtubeVideoId) {
     await releaseVideo(document.youtubeVideoId);
@@ -513,9 +529,9 @@ async function releaseVideo(videoRowId: string): Promise<void> {
 
   if (stillReferenced) return;
 
-  const docId = await youtube.deleteVideoByRowId(videoRowId);
-  if (docId) {
-    await deletePageIndexDocument(docId);
+  const videoId = await youtube.deleteVideoByRowId(videoRowId);
+  if (videoId) {
+    await deleteVideoChunks(videoId);
   }
 }
 
@@ -524,11 +540,11 @@ async function releasePlaylist(playlistRowId: string): Promise<void> {
     return;
   }
 
-  const orphanedDocIds = await youtube.findOrphanedPlaylistDocIds(playlistRowId);
+  const orphanedVideoIds = await youtube.findOrphanedPlaylistVideoIds(playlistRowId);
 
   await youtube.deletePlaylistByRowId(playlistRowId);
 
-  for (const docId of orphanedDocIds) {
-    await deletePageIndexDocument(docId);
+  for (const videoId of orphanedVideoIds) {
+    await deleteVideoChunks(videoId);
   }
 }

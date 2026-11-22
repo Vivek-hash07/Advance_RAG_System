@@ -71,6 +71,48 @@ interface PlayerResponse {
   };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** How long caption downloads stay quiet after YouTube returns 429. */
+export const CAPTION_PAUSE_MS = 10 * 60 * 1000;
+
+export const CAPTION_RATE_LIMIT_MESSAGE =
+  "YouTube is rate-limiting caption downloads from this network. They will be tried again in about 10 minutes.";
+
+let captionsPausedUntil = 0;
+
+/** True while another caption request would only extend the rate limit. */
+export function captionsPaused(): boolean {
+  return Date.now() < captionsPausedUntil;
+}
+
+/** Milliseconds until a caption download is worth trying again. */
+export function captionPauseRemainingMs(): number {
+  return Math.max(0, captionsPausedUntil - Date.now());
+}
+
+function noteCaptionRateLimit(): void {
+  captionsPausedUntil = Date.now() + CAPTION_PAUSE_MS;
+}
+
+/** One caption download at a time, with a gap, so a playlist does not trip 429. */
+let captionSlot: Promise<void> = Promise.resolve();
+
+function takeCaptionSlot(): Promise<() => void> {
+  let release: () => void = () => undefined;
+  const previous = captionSlot;
+  captionSlot = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  return previous.then(async () => {
+    await sleep(4_000);
+    return release;
+  });
+}
+
 async function requestPlayer(
   videoId: string,
   client: (typeof CLIENTS)[number],
@@ -90,6 +132,11 @@ async function requestPlayer(
     }),
     cache: "no-store",
   });
+
+  if (response.status === 429 || response.status === 503) {
+    noteCaptionRateLimit();
+    throw new TranscriptUnavailableError(CAPTION_RATE_LIMIT_MESSAGE);
+  }
 
   if (!response.ok) {
     throw new TranscriptUnavailableError(
@@ -221,14 +268,38 @@ function parseTimedTextXml(body: string): TranscriptCue[] {
   return cues;
 }
 
-async function downloadTrack(track: CaptionTrack): Promise<TranscriptCue[]> {
+async function downloadTrack(
+  track: CaptionTrack,
+  videoId: string,
+  userAgent: string,
+): Promise<TranscriptCue[]> {
+  if (captionsPaused()) {
+    throw new TranscriptUnavailableError(CAPTION_RATE_LIMIT_MESSAGE);
+  }
+
   const url = new URL(track.baseUrl);
   url.searchParams.set("fmt", "json3");
+  const release = await takeCaptionSlot();
 
-  const response = await fetch(url, {
-    headers: { "Accept-Language": "en-US,en" },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        "User-Agent": userAgent,
+        Accept: "*/*",
+        "Accept-Language": "en-US,en",
+        Referer: `https://www.youtube.com/watch?v=${videoId}`,
+      },
+      cache: "no-store",
+    });
+  } finally {
+    release();
+  }
+
+  if (response.status === 429 || response.status === 503) {
+    noteCaptionRateLimit();
+    throw new TranscriptUnavailableError(CAPTION_RATE_LIMIT_MESSAGE);
+  }
 
   if (!response.ok) {
     throw new TranscriptUnavailableError(
@@ -255,8 +326,13 @@ async function downloadTrack(track: CaptionTrack): Promise<TranscriptCue[]> {
 export async function fetchTranscript(
   videoId: string,
 ): Promise<FetchedTranscript> {
+  if (captionsPaused()) {
+    throw new TranscriptUnavailableError(CAPTION_RATE_LIMIT_MESSAGE);
+  }
+
   let lastStatus: { status: string; reason?: string } | null = null;
   let tracks: CaptionTrack[] | undefined;
+  let userAgent: string = CLIENTS[0].userAgent;
 
   for (const client of CLIENTS) {
     const player = await requestPlayer(videoId, client);
@@ -268,7 +344,10 @@ export async function fetchTranscript(
     }
 
     tracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (tracks?.length) break;
+    if (tracks?.length) {
+      userAgent = client.userAgent;
+      break;
+    }
 
     // Playable but captionless: no other client will do better.
     lastStatus = null;
@@ -288,7 +367,7 @@ export async function fetchTranscript(
   }
 
   const track = pickTrack(tracks);
-  const cues = await downloadTrack(track);
+  const cues = await downloadTrack(track, videoId, userAgent);
 
   if (cues.length === 0) {
     throw new TranscriptUnavailableError(

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Loader2Icon, SendIcon } from "lucide-react"
+import { SendIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -80,6 +80,12 @@ export function ChatPanel({
   }, [messages, isAsking])
 
   const canSend = input.trim().length > 0 && !isAsking && readySourceCount > 0
+  const thinkingMessageId = isAsking
+    ? (messages.findLast(
+        (message) =>
+          message.role === "assistant" && !message.content && !message.error,
+      )?.id ?? null)
+    : null
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -116,17 +122,14 @@ export function ChatPanel({
               message={message}
               onCitationClick={onCitationClick}
               activeCitationId={activeCitationId}
+              thinkingLabel={
+                message.id === thinkingMessageId
+                  ? (statusLabel ?? "Thinking...")
+                  : null
+              }
             />
           ))
         )}
-
-        {isAsking && (statusLabel || !messages.some((m) => m.role === "assistant" && m.content)) ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2Icon className="size-4 animate-spin" />
-            {statusLabel ??
-              "Expanding your question and searching your sources..."}
-          </div>
-        ) : null}
       </div>
 
       <footer className="shrink-0 border-t border-border p-4 sm:p-6">

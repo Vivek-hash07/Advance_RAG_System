@@ -62,7 +62,7 @@ function toChatMessages(
   }))
 }
 
-/** Drives the chat transcript against the vectorless RAG endpoint. */
+/** Drives the chat transcript against the RAG endpoint. */
 export function useChat(selectedDocumentIds: string[]) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isAsking, setIsAsking] = useState(false)

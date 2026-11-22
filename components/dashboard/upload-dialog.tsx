@@ -231,7 +231,7 @@ export function UploadDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="min-w-0">
           <DialogHeader>
             <div className="mb-1 flex size-10 items-center justify-center rounded-lg bg-muted">
               <SourceIcon type={type} className="size-5 text-foreground" />
@@ -271,9 +271,9 @@ export function UploadDialog({
               </p>
 
               {error ? (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <div className="mt-3 flex min-w-0 items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                   <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" />
-                  <span>{error}</span>
+                  <span className="min-w-0 break-all">{error}</span>
                 </div>
               ) : null}
             </div>
@@ -349,9 +349,9 @@ export function UploadDialog({
               ) : null}
 
               {error ? (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <div className="mt-3 flex min-w-0 items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                   <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" />
-                  <span>{error}</span>
+                  <span className="min-w-0 break-all">{error}</span>
                 </div>
               ) : null}
             </div>

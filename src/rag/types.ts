@@ -1,7 +1,7 @@
 /** File formats accepted by the upload path. */
 export type FileSourceKind = "pdf" | "doc" | "text" | "vtt" | "image";
 
-/** Every source format handled by the vectorless ingest pipeline. */
+/** Every source format the vector ingest pipeline can process. */
 export type SourceKind = FileSourceKind | "youtube" | "playlist" | "webpage";
 
 export type IngestStatus = "queued" | "processing" | "ready" | "failed";
@@ -29,7 +29,7 @@ export interface OptimizedQuery {
   variants: QueryVariant[];
 }
 
-/** A PageIndex tree node flattened out of its hierarchy. */
+/** A section flattened out of a legacy document tree, used to backfill vectors. */
 export interface FlatTreeNode {
   nodeId: string;
   title: string;

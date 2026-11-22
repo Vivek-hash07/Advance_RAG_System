@@ -1,6 +1,6 @@
 import { getOpenAiClient } from "@/src/lib/openai";
 import { ragConfig } from "@/src/rag/config";
-import { extractTimestamp } from "@/src/rag/pageindex/tree";
+import { extractTimestamp } from "@/src/rag/text/timestamp";
 import { videoUrl } from "@/src/rag/youtube/url";
 import type { AnswerCitation, RetrievedNode } from "@/src/rag/types";
 

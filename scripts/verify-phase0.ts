@@ -3,14 +3,10 @@
  *
  *   npm run verify:phase0
  *
- * Exit 0 means: DB schema is current, env keys needed for ask/ingest are set,
- * and `/api/inngest` reports the expected function count. It does not upload
- * files or ask questions (those need a signed-in browser + Inngest CLI running).
+ * Exit 0 means: DB schema is current and the env keys needed for ask/ingest
+ * are set. It does not upload files or ask questions.
  */
 import { prisma } from "../src/lib/db.ts";
-
-const APP_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
-const EXPECTED_FUNCTIONS = 6;
 
 type Check = { name: string; ok: boolean; detail: string };
 
@@ -64,53 +60,20 @@ async function checkPrismaClient(): Promise<Check> {
   }
 }
 
-async function checkInngestRoute(): Promise<Check> {
-  try {
-    const response = await fetch(`${APP_URL.replace(/\/$/, "")}/api/inngest`);
-    if (!response.ok) {
-      return {
-        name: "/api/inngest",
-        ok: false,
-        detail: `HTTP ${response.status} — is Next running on ${APP_URL}?`,
-      };
-    }
-    const body = (await response.json()) as {
-      function_count?: number;
-      mode?: string;
-    };
-    const count = body.function_count ?? -1;
-    return {
-      name: "/api/inngest",
-      ok: count === EXPECTED_FUNCTIONS,
-      detail: `function_count=${count} mode=${body.mode ?? "?"} (want ${EXPECTED_FUNCTIONS})`,
-    };
-  } catch (error) {
-    return {
-      name: "/api/inngest",
-      ok: false,
-      detail:
-        error instanceof Error
-          ? `${error.message} — start Next with npm run dev`
-          : String(error),
-    };
-  }
-}
-
 async function main() {
   const checks: Check[] = [
     requireEnv("DATABASE_URL"),
     requireEnv("BETTER_AUTH_SECRET"),
     requireEnv("BETTER_AUTH_URL"),
     requireEnv("NEXT_PUBLIC_BETTER_AUTH_URL"),
-    requireEnv("PAGEINDEX_API_KEY"),
     requireEnv("OPENAI_API_KEY"),
+    requireEnv("QUDRANT_API_KEY"),
+    requireEnv("CLUSTER_ENDPOINT"),
     requireEnv("YOUTUBE_API_KEY"),
-    requireEnv("INNGEST_DEV"),
   ];
 
   checks.push(await checkSourceUrlColumn());
   checks.push(await checkPrismaClient());
-  checks.push(await checkInngestRoute());
 
   let failed = 0;
   console.log("Phase 0 verify\n");
@@ -122,7 +85,7 @@ async function main() {
 
   console.log(
     failed === 0
-      ? "\nAll automated Phase 0 checks passed.\nNext: keep `npm run dev` + `npm run inngest` up, then smoke PDF / YouTube / playlist in the dashboard."
+      ? "\nAll automated Phase 0 checks passed.\nNext: keep `npm run dev` up, then smoke PDF / YouTube / playlist in the dashboard."
       : `\n${failed} check(s) failed. Fix the FAIL lines above before Phase 1.`,
   );
 

@@ -13,6 +13,9 @@ import {
   listUserDocuments,
 } from "@/src/rag/documents/service";
 
+/** Uploads and link ingests embed before responding, so give them room to finish. */
+export const maxDuration = 900;
+
 const linkSchema = z.object({
   url: z.string().trim().min(1, "Paste a link to add."),
   /** Resolves a `watch?v=X&list=Y` link the user has already been asked about. */
@@ -52,8 +55,8 @@ export async function GET() {
  * Add a source.
  *
  * Multipart bodies are file uploads; JSON bodies carry a YouTube or webpage
- * link. Both return immediately with a row the UI can render, and hand the slow
- * indexing work to an Inngest run.
+ * link. Indexing finishes before the response, so the returned source is ready
+ * or the request fails with the reason.
  */
 export async function POST(request: Request) {
   try {
@@ -73,7 +76,7 @@ export async function POST(request: Request) {
 
     const document = await ingestUpload(userId, file);
 
-    return NextResponse.json({ document: toPublicSource(document) }, { status: 202 });
+    return NextResponse.json({ document: toPublicSource(document) }, { status: 201 });
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -95,13 +98,13 @@ async function addLink(userId: string, request: Request) {
 
   if (asWebpage) {
     const document = await ingestWebpageUrl(userId, url);
-    return NextResponse.json({ document: toPublicSource(document) }, { status: 202 });
+    return NextResponse.json({ document: toPublicSource(document) }, { status: 201 });
   }
 
   try {
     const document = await ingestYoutubeUrl(userId, url, preference);
 
-    return NextResponse.json({ document: toPublicSource(document) }, { status: 202 });
+    return NextResponse.json({ document: toPublicSource(document) }, { status: 201 });
   } catch (error) {
     // A link carrying both a video and a playlist is a question, not a failure:
     // hand the caller both options rather than guessing and ingesting 200

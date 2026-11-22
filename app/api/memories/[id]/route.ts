@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { toErrorResponse } from "@/src/lib/api-error";
-import {
-  deleteUserMemory,
-  isMem0Configured,
-  updateUserMemory,
-} from "@/src/lib/mem0";
+import { deleteUserMemory, updateUserMemory } from "@/src/rag/memory/store";
 import { requireUserId } from "@/src/lib/session";
 
 interface RouteContext {
@@ -19,15 +15,8 @@ const updateSchema = z.object({
 
 export async function PATCH(request: Request, context: RouteContext) {
   try {
-    await requireUserId();
+    const userId = await requireUserId();
     const { id } = await context.params;
-
-    if (!isMem0Configured()) {
-      return NextResponse.json(
-        { error: "MEM0_API_KEY is not set." },
-        { status: 503 },
-      );
-    }
 
     const parsed = updateSchema.safeParse(await request.json());
     if (!parsed.success) {
@@ -37,7 +26,11 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    const memory = await updateUserMemory(id, parsed.data.text);
+    const memory = await updateUserMemory(userId, id, parsed.data.text);
+    if (!memory) {
+      return NextResponse.json({ error: "Memory not found." }, { status: 404 });
+    }
+
     return NextResponse.json({ memory });
   } catch (error) {
     return toErrorResponse(error);
@@ -46,17 +39,14 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 export async function DELETE(_request: Request, context: RouteContext) {
   try {
-    await requireUserId();
+    const userId = await requireUserId();
     const { id } = await context.params;
+    const removed = await deleteUserMemory(userId, id);
 
-    if (!isMem0Configured()) {
-      return NextResponse.json(
-        { error: "MEM0_API_KEY is not set." },
-        { status: 503 },
-      );
+    if (!removed) {
+      return NextResponse.json({ error: "Memory not found." }, { status: 404 });
     }
 
-    await deleteUserMemory(id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return toErrorResponse(error);

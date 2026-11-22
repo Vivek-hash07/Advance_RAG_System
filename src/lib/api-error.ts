@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { describePublicError } from "@/src/lib/public-error";
 import { UnauthorizedError } from "@/src/lib/session";
 import { IngestError } from "@/src/rag/documents/service";
 import { NoSourcesError } from "@/src/rag/ask";
@@ -16,7 +17,10 @@ export function toErrorResponse(error: unknown): NextResponse {
   }
 
   if (error instanceof IngestError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(
+      { error: describePublicError(error, "Could not add that source.") },
+      { status: error.status },
+    );
   }
 
   if (error instanceof NoSourcesError) {
@@ -34,10 +38,9 @@ export function toErrorResponse(error: unknown): NextResponse {
     return NextResponse.json({ error: error.message }, { status });
   }
 
-  const message =
-    error instanceof Error ? error.message : "Something went wrong.";
+  const message = describePublicError(error, "Something went wrong.");
 
-  if (/OPENAI_API_KEY|PAGEINDEX_API_KEY|YOUTUBE_API_KEY|MEM0_API_KEY/.test(message)) {
+  if (/OPENAI_API_KEY|YOUTUBE_API_KEY|QUDRANT_API_KEY|QDRANT_API_KEY|CLUSTER_ENDPOINT/.test(message)) {
     return NextResponse.json({ error: message }, { status: 503 });
   }
 

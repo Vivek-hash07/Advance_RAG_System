@@ -25,7 +25,6 @@ interface MemoriesDialogProps {
 }
 
 export function MemoriesDialog({ open, onOpenChange }: MemoriesDialogProps) {
-  const [configured, setConfigured] = useState(true)
   const [memories, setMemories] = useState<UserMemory[]>([])
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -43,7 +42,6 @@ export function MemoriesDialog({ open, onOpenChange }: MemoriesDialogProps) {
     void fetchMemories()
       .then((result) => {
         if (cancelled) return
-        setConfigured(result.configured)
         setMemories(result.memories)
       })
       .catch((err: unknown) => {
@@ -98,8 +96,8 @@ export function MemoriesDialog({ open, onOpenChange }: MemoriesDialogProps) {
         <DialogHeader>
           <DialogTitle>Memories</DialogTitle>
           <DialogDescription>
-            Durable preferences Mem0 extracts from your chats. Documents stay in
-            PageIndex — this is only personal context.
+            Preferences and decisions saved from your chats. They stay in your
+            database and are separate from your documents.
           </DialogDescription>
         </DialogHeader>
 
@@ -108,11 +106,6 @@ export function MemoriesDialog({ open, onOpenChange }: MemoriesDialogProps) {
             <Loader2Icon className="size-4 animate-spin" />
             Loading memories...
           </div>
-        ) : !configured ? (
-          <p className="py-4 text-sm text-muted-foreground">
-            Set <code className="text-xs">MEM0_API_KEY</code> in your environment
-            to enable memory.
-          </p>
         ) : memories.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">
             No memories yet. They appear after chats where you share preferences

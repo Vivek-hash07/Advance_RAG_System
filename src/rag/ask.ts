@@ -1,19 +1,7 @@
-import { generateAnswer } from "@/src/rag/answer/answer";
-import {
-  addConversationMemory,
-  searchMemories,
-} from "@/src/lib/mem0";
-import { ragConfig } from "@/src/rag/config";
-import {
-  appendAssistantMessage,
-  appendUserMessage,
-  ensureConversation,
-  getRecentTurns,
-} from "@/src/rag/conversations/repository";
-import { findRetrievableSources } from "@/src/rag/documents/repository";
-import { optimizeQuery } from "@/src/rag/query/optimize";
-import { retrieveNodes } from "@/src/rag/retrieval/retrieve";
+import { getAskGraph } from "@/src/rag/graph/ask-graph";
 import type { AnswerResult } from "@/src/rag/types";
+
+export { NoSourcesError } from "@/src/rag/errors";
 
 export interface AskOptions {
   userId: string;
@@ -36,27 +24,15 @@ export interface AskPipelineResult extends AnswerResult {
   assistantMessageId: string;
 }
 
-export class NoSourcesError extends Error {
-  constructor() {
-    super(
-      "No sources are ready yet. Upload a document or add a YouTube video or playlist first.",
-    );
-    this.name = "NoSourcesError";
-  }
-}
-
 /**
- * The vectorless RAG pipeline, end to end:
+ * LangGraph RAG pipeline:
  *
- * 1. Ensure a conversation exists and load retrievable sources.
- * 2. Persist the user turn.
- * 3. Search Mem0 for durable user facts (optional).
- * 4. Optimize the query — step-back, rewriting, sub-queries and HyDE.
- * 5. For playlists, reason over the playlist-level index to pick videos.
- * 6. Reason over each source's PageIndex tree to pick relevant sections.
- * 7. Fuse the per-source rankings with Reciprocal Rank Fusion.
- * 8. Answer from sections + recent turns + memories, with citations.
- * 9. Persist the assistant turn and fire-and-forget Mem0 add.
+ * 1. Load ready sources and persist the user turn.
+ * 2. Search Postgres-backed memories (vectors live in Qdrant).
+ * 3. Optimize the query — step-back, rewriting, sub-queries and HyDE.
+ * 4. Embed those variants and search Qdrant, routing playlists to a few videos.
+ * 5. Answer from the retrieved chunks, recent turns and memories.
+ * 6. Persist the assistant turn and store any new personal facts.
  */
 export async function askQuestion({
   userId,
@@ -67,71 +43,27 @@ export async function askQuestion({
   onStatus,
   onDelta,
 }: AskOptions): Promise<AskPipelineResult> {
-  const available = await findRetrievableSources(userId, documentIds);
-
-  if (available.length === 0) {
-    throw new NoSourcesError();
-  }
-
-  const conversation = await ensureConversation(
-    userId,
-    conversationId,
-    question,
+  const result = await getAskGraph().invoke(
+    {
+      userId,
+      question,
+      documentIds: documentIds ?? null,
+      requestedConversationId: conversationId ?? null,
+    },
+    { configurable: { onMeta, onStatus, onDelta } },
   );
 
-  // History before the new user turn.
-  const history = await getRecentTurns(conversation.id, 8);
-
-  const userMessage = await appendUserMessage(conversation.id, question);
-  onMeta?.({
-    conversationId: conversation.id,
-    userMessageId: userMessage.id,
-  });
-
-  // `available` is ordered newest first.
-  const sources = available.slice(0, ragConfig.retrieval.maxDocumentsPerQuery);
-
-  if (sources.length < available.length) {
-    console.warn(
-      `[rag] Searching ${sources.length} of ${available.length} sources; raise RETRIEVAL_MAX_DOCUMENTS to widen the search.`,
-    );
+  if (!result.queries) {
+    throw new Error("The ask graph finished without an optimized query.");
   }
 
-  onStatus?.("remembering");
-  const memories = await searchMemories(userId, question);
-
-  onStatus?.("optimizing");
-  const queries = await optimizeQuery(question);
-
-  onStatus?.("retrieving");
-  const { nodes, pendingVideos } = await retrieveNodes(sources, queries);
-
-  onStatus?.("answering");
-  const { answer, citations } = await generateAnswer(queries.rewritten, nodes, {
-    history,
-    memories,
-    onDelta,
-  });
-
-  const assistantMessage = await appendAssistantMessage(conversation.id, {
-    content: answer,
-    citations,
-    queries,
-    pendingVideos,
-  });
-
-  void addConversationMemory(userId, conversation.id, [
-    { role: "user", content: question },
-    { role: "assistant", content: answer },
-  ]);
-
   return {
-    answer,
-    citations,
-    queries,
-    pendingVideos,
-    conversationId: conversation.id,
-    userMessageId: userMessage.id,
-    assistantMessageId: assistantMessage.id,
+    answer: result.answer,
+    citations: result.citations,
+    queries: result.queries,
+    pendingVideos: result.pendingVideos,
+    conversationId: result.conversationId,
+    userMessageId: result.userMessageId,
+    assistantMessageId: result.assistantMessageId,
   };
 }

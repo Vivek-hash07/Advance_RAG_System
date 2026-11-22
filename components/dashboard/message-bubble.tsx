@@ -14,9 +14,8 @@ import {
 import { cn } from "@/lib/utils"
 
 /**
- * Large playlists only transcribe a video the first time a question routes to
- * it, so an answer can legitimately be missing context that is moments away.
- * Saying so is more honest than answering as if those videos did not exist.
+ * A playlist that is still finishing its transcripts can answer from the videos
+ * already chunked. The rest are named so the answer is not treated as complete.
  */
 function PendingVideosNotice({ videos }: { videos: PendingVideo[] }) {
   return (
@@ -37,14 +36,18 @@ interface MessageBubbleProps {
   message: ChatMessage
   onCitationClick: (citation: SourceCitation) => void
   activeCitationId?: string | null
+  /** Set on the in-flight assistant turn while the model has not written yet. */
+  thinkingLabel?: string | null
 }
 
 export function MessageBubble({
   message,
   onCitationClick,
   activeCitationId,
+  thinkingLabel,
 }: MessageBubbleProps) {
   const isUser = message.role === "user"
+  const isThinking = !isUser && !message.error && !message.content && !!thinkingLabel
 
   return (
     <div className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -60,6 +63,8 @@ export function MessageBubble({
           <UserIcon className="size-4" />
         ) : message.error ? (
           <AlertCircleIcon className="size-4" />
+        ) : isThinking ? (
+          <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
         ) : (
           <BotIcon className="size-4" />
         )}
@@ -71,20 +76,26 @@ export function MessageBubble({
           isUser ? "items-end" : "items-start",
         )}
       >
-        <div
-          className={cn(
-            "rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap",
-            isUser && "rounded-tr-sm bg-primary text-primary-foreground",
-            !isUser &&
-              message.error &&
-              "rounded-tl-sm border border-destructive/30 bg-destructive/10 text-destructive",
-            !isUser &&
-              !message.error &&
-              "rounded-tl-sm border border-border bg-card text-black",
-          )}
-        >
-          {message.content}
-        </div>
+        {isThinking ? (
+          <div className="flex items-center gap-2 pt-1.5 text-sm text-muted-foreground">
+            <span>{thinkingLabel}</span>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              "rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap",
+              isUser && "rounded-tr-sm bg-primary text-primary-foreground",
+              !isUser &&
+                message.error &&
+                "rounded-tl-sm border border-destructive/30 bg-destructive/10 text-destructive",
+              !isUser &&
+                !message.error &&
+                "rounded-tl-sm border border-border bg-card text-card-foreground",
+            )}
+          >
+            {message.content}
+          </div>
+        )}
 
         {message.citations && message.citations.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">

@@ -1,4 +1,5 @@
 import type { DocumentRecord } from "@/src/rag/documents/repository";
+import { sanitizeStoredError } from "@/src/lib/public-error";
 import type { IngestStatus, SourceKind } from "@/src/rag/types";
 
 export interface PublicFailedVideo {
@@ -7,7 +8,7 @@ export interface PublicFailedVideo {
   errorMessage: string | null;
 }
 
-/** A source as exposed to the browser. Internal PageIndex ids stay server-side. */
+/** A source as exposed to the browser. Vector ids stay server-side. */
 export interface PublicSource {
   id: string;
   name: string;
@@ -72,14 +73,23 @@ export function toPublicSource(record: DocumentRecord): PublicSource {
     name: record.name,
     sourceKind: record.sourceKind,
     status: record.status,
-    errorMessage: record.errorMessage,
+    errorMessage: sanitizeStoredError(
+      record.errorMessage,
+      "This source could not be indexed. Try adding it again.",
+    ),
     pageCount: record.pageCount,
     sourceUrl: record.sourceUrl,
     detail: record.status === "ready" ? describeSize(record) : null,
     truncated: honesty?.truncated ?? null,
     unavailableCount: honesty?.unavailableCount ?? null,
     failedCount: honesty?.failedCount ?? null,
-    failedVideos: honesty?.failedVideos ?? [],
+    failedVideos: (honesty?.failedVideos ?? []).map((video) => ({
+      ...video,
+      errorMessage: sanitizeStoredError(
+        video.errorMessage,
+        "This video could not be indexed.",
+      ),
+    })),
     createdAt: record.createdAt,
   };
 }

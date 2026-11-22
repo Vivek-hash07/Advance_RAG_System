@@ -1,270 +1,232 @@
-import { inngest } from "@/src/inngest/client";
-import { videoRequested } from "@/src/inngest/events";
 import { ragConfig } from "@/src/rag/config";
 import type { RetrievalSource } from "@/src/rag/documents/repository";
-import { indexNodesById, renderOutline } from "@/src/rag/pageindex/tree";
-import { reciprocalRankFusion, type RankedList } from "@/src/rag/retrieval/fusion";
-import { selectRelevantNodes } from "@/src/rag/retrieval/node-selection";
-import { routeToVideos } from "@/src/rag/retrieval/video-routing";
+import { selectRelevantSources } from "@/src/rag/retrieval/source-routing";
 import type {
-  FlatTreeNode,
   OptimizedQuery,
   PendingVideo,
   RetrievedNode,
-  SelectedNode,
   SourceKind,
 } from "@/src/rag/types";
+import { ensureFileVectors, ensureVideoVectors } from "@/src/rag/vector/ensure";
+import { searchChunks, type StoredChunk } from "@/src/rag/vector/qdrant";
 import {
-  findUnbuiltPlaylistVideos,
-  findVideoTrees,
+  indexPlaylistInBackground,
+  isPlaylistStale,
+  syncPlaylist,
+} from "@/src/rag/youtube/playlist-ingest";
+import {
   loadPlaylistIndex,
+  type PlaylistIndexEntry,
 } from "@/src/rag/youtube/repository";
 
-/**
- * One searchable unit: a document with an outline the selector can reason over.
- *
- * Files and single videos map to exactly one unit. A playlist maps to one unit
- * per video that routing picked, which is what makes the two levels — playlist
- * then section — collapse back into a single ranking.
- */
-interface SearchUnit {
-  /** Unique within a question; the fusion key. */
-  key: string;
+interface HitLabel {
   documentId: string;
-  /** What a citation is labelled with. */
-  displayName: string;
+  documentName: string;
   sourceKind: SourceKind;
   videoId: string | null;
   sourceUrl: string | null;
-  nodes: FlatTreeNode[];
 }
 
 export interface RetrievalOutcome {
   nodes: RetrievedNode[];
-  /** Videos routing wanted but whose transcripts are still being built. */
   pendingVideos: PendingVideo[];
 }
 
-/**
- * Expand a playlist into the videos this question is actually about.
- *
- * Stage one of two: skim the playlist-level index (titles, dates, one-line
- * summaries) rather than any transcript, then read only what survives. Videos
- * that routing selected but that have never been transcribed are queued here
- * and reported back — for a large playlist this is the moment a transcript
- * first gets built, so nobody pays to transcribe videos nobody asks about.
- */
+function playlistCatalog(
+  source: Extract<RetrievalSource, { type: "playlist" }>,
+  entries: PlaylistIndexEntry[],
+): RetrievedNode {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    const name = entry.channelTitle.trim();
+    if (!name) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const channel =
+    [...counts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ??
+    "Unknown";
+
+  const lines = entries.map(
+    (entry) => `${entry.position + 1}. ${entry.title}`,
+  );
+
+  return {
+    documentId: source.documentId,
+    documentName: source.name,
+    sourceKind: "playlist",
+    videoId: null,
+    sourceUrl: null,
+    nodeId: `playlist:${source.playlistId}:catalog`,
+    title: "Playlist overview",
+    pageIndex: null,
+    path: [],
+    text: [
+      `Playlist: ${source.name}`,
+      `Author / channel: ${channel}`,
+      `Videos in the creator's order (${entries.length}):`,
+      ...lines,
+    ].join("\n"),
+    reason: "Playlist catalog: author and series order.",
+    rrfScore: 1,
+    bestRelevance: 1,
+  };
+}
+
 async function expandPlaylist(
   source: Extract<RetrievalSource, { type: "playlist" }>,
-  queries: OptimizedQuery,
-): Promise<{ units: SearchUnit[]; pending: PendingVideo[] }> {
+  labels: Map<string, HitLabel>,
+  videoIds: Set<string>,
+): Promise<{ catalog: RetrievedNode | null; pending: PendingVideo[] }> {
+  if (await isPlaylistStale(source.playlistId)) {
+    await syncPlaylist(source.playlistId).catch((error) => {
+      console.warn(`[rag] Could not refresh playlist ${source.playlistId}:`, error);
+    });
+  }
+
   const entries = await loadPlaylistIndex(source.playlistId);
+  if (entries.length === 0) return { catalog: null, pending: [] };
 
-  if (entries.length === 0) {
-    return { units: [], pending: [] };
-  }
-
-  const routed = await routeToVideos(source.name, entries, queries);
-  if (routed.length === 0) {
-    return { units: [], pending: [] };
-  }
-
-  const byVideoId = new Map(entries.map((entry) => [entry.videoId, entry]));
-  const trees = await findVideoTrees(routed.map((video) => video.videoId));
-
-  const units: SearchUnit[] = [];
   const pending: PendingVideo[] = [];
+  const readyIds: string[] = [];
 
-  for (const video of routed) {
-    const entry = byVideoId.get(video.videoId);
-    if (!entry) continue;
+  for (const entry of entries) {
+    if (entry.availability !== "available") continue;
 
-    const nodes = trees.get(video.videoId);
-
-    if (nodes?.length) {
-      units.push({
-        key: `${source.documentId}:${video.videoId}`,
+    if (entry.transcriptStatus === "ready") {
+      readyIds.push(entry.videoId);
+      labels.set(`video:${entry.videoId}`, {
         documentId: source.documentId,
-        displayName: `${source.name} — ${entry.title}`,
+        documentName: `${source.name} — ${entry.title}`,
         sourceKind: "playlist",
-        videoId: video.videoId,
+        videoId: entry.videoId,
         sourceUrl: null,
-        nodes,
       });
       continue;
     }
 
-    // Routing already excludes videos that failed to build, so anything left
-    // without a tree is genuinely still on its way.
-    pending.push({ videoId: video.videoId, title: entry.title });
+    if (entry.transcriptStatus === "failed") continue;
+    pending.push({ videoId: entry.videoId, title: entry.title });
   }
 
   if (pending.length > 0) {
-    await queueOnDemandBuilds(source.playlistId, pending);
+    void indexPlaylistInBackground(source.playlistId);
   }
 
-  return { units, pending };
+  await ensureVideoVectors(readyIds);
+  for (const videoId of readyIds) videoIds.add(videoId);
+
+  return { catalog: playlistCatalog(source, entries), pending };
+}
+
+function labelFor(
+  hit: StoredChunk,
+  labels: Map<string, HitLabel>,
+): HitLabel | null {
+  if (hit.videoId) return labels.get(`video:${hit.videoId}`) ?? null;
+  if (hit.documentId) return labels.get(`doc:${hit.documentId}`) ?? null;
+  return null;
 }
 
 /**
- * Ask Inngest to build the transcripts a question just asked for.
+ * Vector retrieval over the sources that match this question.
  *
- * Only videos that have never been started are queued, and the video function
- * is limited to one run per video id, so repeated questions about the same
- * unbuilt video cannot pile up duplicate work.
+ * A playlist contributes its catalog (author and video order) plus every
+ * transcript that is already chunked. Query variants are fused with
+ * reciprocal rank fusion.
  */
-async function queueOnDemandBuilds(
-  playlistId: string,
-  pending: PendingVideo[],
-): Promise<void> {
-  try {
-    const unbuilt = new Set(await findUnbuiltPlaylistVideos(playlistId));
-    const toQueue = pending.filter((video) => unbuilt.has(video.videoId));
-
-    if (toQueue.length === 0) return;
-
-    await inngest.send(
-      toQueue.map((video) =>
-        videoRequested.create({
-          videoId: video.videoId,
-          playlistId,
-          documentId: null,
-          trigger: "query",
-        }),
-      ),
-    );
-  } catch (error) {
-    // A failed dispatch must not fail the answer; the user simply gets the
-    // sources that were already built.
-    console.warn("[rag] Could not queue on-demand transcripts:", error);
-  }
-}
-
-async function toSearchUnits(
+export async function retrieveNodes(
+  userId: string,
   sources: RetrievalSource[],
   queries: OptimizedQuery,
-): Promise<{ units: SearchUnit[]; pending: PendingVideo[] }> {
-  const units: SearchUnit[] = [];
+): Promise<RetrievalOutcome> {
+  const relevant = await selectRelevantSources(
+    queries.original || queries.rewritten,
+    sources,
+  );
+  await ensureFileVectors(userId, relevant);
+
+  const labels = new Map<string, HitLabel>();
+  const documentIds: string[] = [];
+  const videoIds = new Set<string>();
   const pending: PendingVideo[] = [];
 
-  const playlistExpansions = await Promise.all(
-    sources
-      .filter((source) => source.type === "playlist")
-      .map((source) => expandPlaylist(source, queries)),
-  );
-
-  for (const source of sources) {
+  for (const source of relevant) {
     if (source.type === "file") {
-      units.push({
-        key: source.documentId,
+      if (source.chunkCount <= 0) continue;
+      documentIds.push(source.documentId);
+      labels.set(`doc:${source.documentId}`, {
         documentId: source.documentId,
-        displayName: source.name,
+        documentName: source.name,
         sourceKind: source.sourceKind,
         videoId: null,
         sourceUrl: source.sourceUrl,
-        nodes: source.nodes,
       });
     }
 
     if (source.type === "video") {
-      units.push({
-        key: source.documentId,
+      if (source.chunkCount <= 0 && source.backfillNodes.length > 0) {
+        await ensureVideoVectors([source.videoId]);
+        source.chunkCount = 1;
+      }
+      if (source.chunkCount <= 0 && source.backfillNodes.length === 0) continue;
+
+      videoIds.add(source.videoId);
+      labels.set(`video:${source.videoId}`, {
         documentId: source.documentId,
-        displayName: source.name,
+        documentName: source.name,
         sourceKind: "youtube",
         videoId: source.videoId,
         sourceUrl: null,
-        nodes: source.nodes,
       });
     }
   }
 
-  for (const expansion of playlistExpansions) {
-    units.push(...expansion.units);
-    pending.push(...expansion.pending);
-  }
+  const playlists = await Promise.all(
+    relevant
+      .filter((source) => source.type === "playlist")
+      .map((source) => expandPlaylist(source, labels, videoIds)),
+  );
+  const catalogs = playlists.flatMap((playlist) =>
+    playlist.catalog ? [playlist.catalog] : [],
+  );
+  pending.push(...playlists.flatMap((playlist) => playlist.pending));
 
-  return { units, pending };
-}
-
-/**
- * Select the document sections that should answer the question.
- *
- * Playlists are expanded to their relevant videos first, then every unit —
- * file, standalone video or playlist video — is searched independently by
- * reasoning over its outline. The per-unit rankings are fused with RRF and
- * trimmed to a context budget, so a playlist video competes with a PDF on equal
- * footing.
- */
-export async function retrieveNodes(
-  sources: RetrievalSource[],
-  queries: OptimizedQuery,
-): Promise<RetrievalOutcome> {
-  const { units, pending } = await toSearchUnits(sources, queries);
-
-  const searchable = units.filter((unit) => unit.nodes.length > 0);
-  if (searchable.length === 0) {
-    return { nodes: [], pendingVideos: pending };
-  }
-
-  const selections = await Promise.all(
-    searchable.map(async (unit): Promise<RankedList<SelectedNode>> => {
-      const items = await selectRelevantNodes(
-        unit.displayName,
-        unit.nodes,
-        renderOutline(unit.nodes),
-        queries,
-      );
-
-      return { key: unit.key, items };
-    }),
+  const hits = await searchChunks(
+    queries.variants.map((variant) => variant.text),
+    { documentIds, videoIds: [...videoIds] },
   );
 
-  const fused = reciprocalRankFusion(selections, (node) => node.nodeId);
+  const retrieved: RetrievedNode[] = [...catalogs];
+  let contextChars = catalogs.reduce((total, node) => total + node.text.length, 0);
 
-  const unitsByKey = new Map(
-    searchable.map((unit) => [
-      unit.key,
-      { unit, nodesById: indexNodesById(unit.nodes) },
-    ]),
-  );
-
-  const retrieved: RetrievedNode[] = [];
-  let contextChars = 0;
-
-  for (const entry of fused) {
+  for (const hit of hits) {
     if (retrieved.length >= ragConfig.retrieval.finalNodes) break;
 
-    const bucket = unitsByKey.get(entry.sourceKey);
-    const node = bucket?.nodesById.get(entry.item.nodeId);
-    if (!bucket || !node) continue;
+    const label = labelFor(hit, labels);
+    if (!label) continue;
 
-    const text = node.text.trim();
-    if (!text) continue;
-
-    // Stop once the context budget is spent, but always keep the top section.
     if (
       retrieved.length > 0 &&
-      contextChars + text.length > ragConfig.retrieval.maxContextChars
+      contextChars + hit.text.length > ragConfig.retrieval.maxContextChars
     ) {
       continue;
     }
-    contextChars += text.length;
+    contextChars += hit.text.length;
 
     retrieved.push({
-      documentId: bucket.unit.documentId,
-      documentName: bucket.unit.displayName,
-      sourceKind: bucket.unit.sourceKind,
-      videoId: bucket.unit.videoId,
-      sourceUrl: bucket.unit.sourceUrl,
-      nodeId: node.nodeId,
-      title: node.title,
-      pageIndex: node.pageIndex,
-      path: node.path,
-      text,
-      reason: entry.item.reason,
-      rrfScore: entry.rrfScore,
-      bestRelevance: entry.item.relevance,
+      documentId: label.documentId,
+      documentName: label.documentName,
+      sourceKind: label.sourceKind,
+      videoId: label.videoId,
+      sourceUrl: label.sourceUrl ?? hit.sourceUrl,
+      nodeId: hit.id,
+      title: hit.title,
+      pageIndex: hit.pageIndex,
+      path: hit.path,
+      text: hit.text,
+      reason: "Matched by semantic search.",
+      rrfScore: hit.rrfScore,
+      bestRelevance: hit.score,
     });
   }
 
