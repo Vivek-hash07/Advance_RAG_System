@@ -1,5 +1,5 @@
 /**
- * Offline webpage scrape check — Scrapling only, no PageIndex submit.
+ * Offline webpage scrape check — HTTP fetch only, no model calls.
  *
  *   npm run verify:webpage
  *   npm run verify:webpage -- https://example.com
@@ -14,7 +14,7 @@ async function main() {
   const safe = await assertSafePublicUrl(url);
   console.log(`  ok → ${safe.href}`);
 
-  console.log("Scrapling fetch + PDF render (no PageIndex)...");
+  console.log("Webpage fetch + PDF render...");
   const { scraped, pdf } = await scrapeWebpage(url);
   console.log(`  title: ${scraped.title}`);
   console.log(`  finalUrl: ${scraped.finalUrl}`);

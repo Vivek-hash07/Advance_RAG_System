@@ -119,15 +119,19 @@ export const ragConfig = {
     maxIndexChars: Number(process.env.MAX_INDEX_CHARS) || 500_000,
   },
   ingest: {
-    maxFileBytes: Number(process.env.MAX_UPLOAD_BYTES) || 25 * 1024 * 1024,
+    /**
+     * Hobby functions reject bodies over 4.5 MB. Local runs keep the 25 MB cap
+     * unless MAX_UPLOAD_BYTES is set.
+     */
+    maxFileBytes:
+      Number(process.env.MAX_UPLOAD_BYTES) ||
+      (process.env.VERCEL ? 4_500_000 : 25 * 1024 * 1024),
   },
   webpage: {
-    /** Hard cap on how long Scrapling may spend on one page. */
+    /** Hard cap on how long one page fetch may take. */
     fetchTimeoutMs: Number(process.env.WEBPAGE_FETCH_TIMEOUT_MS) || 45_000,
     /** Reject pages whose extracted text exceeds this size. */
     maxTextChars: Number(process.env.WEBPAGE_MAX_TEXT_CHARS) || 400_000,
-    /** Use Scrapling StealthyFetcher (browser) instead of HTTP Fetcher. */
-    stealth: process.env.WEBPAGE_STEALTH === "1",
   },
   youtube: {
     apiKey: process.env.YOUTUBE_API_KEY,
@@ -135,7 +139,9 @@ export const ragConfig = {
      * Hard cap on playlist size. Playlists longer than this are truncated to the
      * first N videos and the user is told, rather than silently losing the tail.
      */
-    maxPlaylistVideos: Number(process.env.YOUTUBE_MAX_PLAYLIST_VIDEOS) || 200,
+    maxPlaylistVideos:
+      Number(process.env.YOUTUBE_MAX_PLAYLIST_VIDEOS) ||
+      (process.env.VERCEL ? 10 : 200),
     /**
      * Cap used by playlist video routing. The ask path searches every chunked
      * video in the sources chosen for the question.

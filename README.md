@@ -1,6 +1,6 @@
 # Vector RAG
 
-Local RAG app that indexes PDFs, Word documents, text and markdown, VTT captions, images, webpages, and YouTube videos and playlists in [Qdrant](https://qdrant.tech). Answers cite pages, timestamps, or original links. Chat memory is stored in Postgres. Auth is [Better Auth](https://www.better-auth.com/). Webpage fetch uses [Scrapling](https://scrapling.readthedocs.io/en/latest/). The ask path is a [LangGraph](https://langchain-ai.github.io/langgraph/) pipeline. Indexing finishes inside the upload request.
+Local RAG app that indexes PDFs, Word documents, text and markdown, VTT captions, images, webpages, and YouTube videos and playlists in [Qdrant](https://qdrant.tech). Answers cite pages, timestamps, or original links. Chat memory is stored in Postgres. Auth is [Better Auth](https://www.better-auth.com/). Webpage fetch is a plain HTTP request with an SSRF check. The ask path is a [LangGraph](https://langchain-ai.github.io/langgraph/) pipeline. Indexing finishes inside the upload request.
 
 ## Prerequisites
 
@@ -18,10 +18,6 @@ cp .env.example .env
 npm install
 npm run db:deploy
 npm run db:generate
-
-# Webpage scraping (Scrapling) — Python 3.10+
-/opt/homebrew/bin/python3.13 -m venv scripts/scrapling/.venv
-scripts/scrapling/.venv/bin/pip install -r scripts/scrapling/requirements.txt
 ```
 
 ### Required environment variables
@@ -77,7 +73,7 @@ Every source is turned into text, then into chunks, then into vectors in the `ra
 | Text / Markdown | The file as-is, including headings |
 | Image | A vision model transcribes the picture into Markdown (OCR plus a short description) |
 | WebVTT | Caption cues merged by speaker, each paragraph prefixed with `[HH:MM:SS]` |
-| Webpage | Scrapling fetches the page; headings and lists are kept; the source URL is stored for the citation |
+| Webpage | An HTTP fetch keeps headings and lists; the source URL is stored for the citation |
 | YouTube video | Public captions, grouped by chapter or by 5-minute windows, with `[HH:MM:SS]` on each paragraph |
 | Playlist | The listing is saved, then every video's captions are chunked before the playlist is marked ready. A question about the series uses that catalog (channel and video order) plus the matching transcript chunks |
 
@@ -96,7 +92,7 @@ Manual UI smokes (signed in, with `npm run dev` running):
 1. **PDF** — upload a PDF → status `ready` → ask a question → answer includes a page citation.
 2. **YouTube video** — paste a watch URL → `ready` → ask → answer includes a timestamp deep link.
 3. **Playlist** — adding it chunks every video before the source shows ready. A question picks the playlist instead of unrelated files, and can answer who made it and where the series starts from the video list.
-4. **Webpage** — paste a public URL → Scrapling scrape → `ready` → ask → citation links back to the page.
+4. **Webpage** — paste a public URL → page fetch → `ready` → ask → citation links back to the page.
 5. **Image** — upload PNG/JPEG/WebP/GIF → vision transcription → `ready` → ask with page citations.
 
 Offline / API helpers (no full ask path):
@@ -105,7 +101,7 @@ Offline / API helpers (no full ask path):
 npm run verify:ingest
 npm run verify:youtube          # offline
 npm run verify:youtube -- --live  # needs YOUTUBE_API_KEY
-npm run verify:webpage          # Scrapling fetch only
+npm run verify:webpage          # webpage fetch only
 ```
 
 ## Scripts
@@ -119,7 +115,7 @@ npm run verify:webpage          # Scrapling fetch only
 | `npm run verify:phase0` | Env and database health |
 | `npm run verify:ingest` | Offline file/PDF conversion checks |
 | `npm run verify:youtube` | YouTube URL/transcript helpers |
-| `npm run verify:webpage` | Scrapling webpage scrape |
+| `npm run verify:webpage` | Webpage scrape |
 | `npm run verify:qdrant` | Qdrant credentials and collection setup |
 | `npm run verify:chunk` | One sample of the free chunk model |
 

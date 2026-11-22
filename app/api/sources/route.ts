@@ -13,8 +13,11 @@ import {
   listUserDocuments,
 } from "@/src/rag/documents/service";
 
-/** Uploads and link ingests embed before responding, so give them room to finish. */
-export const maxDuration = 900;
+/**
+ * Uploads and link ingests embed before responding.
+ * 300s is the Hobby plan ceiling; a longer value fails the Vercel build.
+ */
+export const maxDuration = 300;
 
 const linkSchema = z.object({
   url: z.string().trim().min(1, "Paste a link to add."),

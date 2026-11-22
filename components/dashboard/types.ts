@@ -140,7 +140,7 @@ export const UPLOAD_OPTIONS: UploadOption[] = [
     type: "webpage",
     label: "Webpage",
     description:
-      "Paste a public page URL. Scrapling fetches the page; text is indexed with citations back to the link.",
+      "Paste a public page URL. The page is fetched and indexed with citations back to the link.",
     input: "url",
     action: "Paste link",
     enabled: true,
